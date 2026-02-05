@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { ProductData, VoiceName } from '../types';
-import { Upload, ImageIcon, X, Globe, Mic, Type, Plus } from './Icons';
+import { Upload, X, Globe, Mic, Plus } from './Icons';
 
 interface InputFormProps {
   onSubmit: (data: ProductData) => void;
@@ -28,6 +28,11 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (images.length === 0) {
+      alert("Please upload at least one product image.");
+      return;
+    }
+    
     onSubmit({
       id: crypto.randomUUID(),
       name, 
@@ -39,8 +44,10 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
       introText,
       outroText
     });
-    // Optional: clear form after submit for next batch item
+
+    // Clear form
     setName('');
+    setWebsiteUrl('');
     setDescription('');
     setImages([]);
     setIntroText('');
@@ -57,7 +64,7 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Product Name</label>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Product Name <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={name}
@@ -69,14 +76,13 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">Website</label>
+            <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">Website (Optional)</label>
             <div className="relative">
               <Globe className="absolute left-3 top-3.5 w-4 h-4 text-slate-500" />
               <input
                 type="url"
                 value={websiteUrl}
                 onChange={(e) => setWebsiteUrl(e.target.value)}
-                required
                 disabled={isProcessing}
                 placeholder="www.example.com"
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -106,7 +112,7 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Description</label>
+          <label className="block text-sm font-medium text-slate-300 mb-2">Description <span className="text-red-500">*</span></label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -120,23 +126,32 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
 
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-2">
-            Image <span className="text-xs text-indigo-400 font-normal ml-1">(Auto-generated if empty)</span>
+            Product Image <span className="text-red-500">*</span>
           </label>
           
           <div className="mb-2">
             {images.length > 0 ? (
-              <div className="relative group h-20 w-32 bg-slate-900 rounded-lg overflow-hidden border border-slate-700">
-                <img src={URL.createObjectURL(images[0])} className="w-full h-full object-cover opacity-80" />
-                <button type="button" onClick={() => setImages([])} className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-all text-white"><X size={16}/></button>
+              <div className="relative group h-24 w-full bg-slate-900 rounded-lg overflow-hidden border border-slate-700">
+                <img src={URL.createObjectURL(images[0])} className="w-full h-full object-contain bg-black/40" alt="Product preview" />
+                <button 
+                  type="button" 
+                  onClick={() => setImages([])} 
+                  className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-all text-white font-bold gap-2"
+                >
+                  <X size={20}/> Remove Image
+                </button>
               </div>
             ) : (
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full py-4 border-2 border-dashed border-slate-700 rounded-lg text-slate-500 hover:border-indigo-500 hover:text-indigo-400 transition-all bg-slate-900/30 flex items-center justify-center gap-2"
+                className="w-full py-8 border-2 border-dashed border-slate-700 rounded-lg text-slate-500 hover:border-indigo-500 hover:text-indigo-400 transition-all bg-slate-900/30 flex flex-col items-center justify-center gap-3"
               >
-                <Upload size={18} />
-                <span className="text-sm">Upload Image</span>
+                <Upload size={24} />
+                <div className="text-center">
+                  <span className="text-sm font-semibold block">Upload Product Photo</span>
+                  <span className="text-[10px] uppercase tracking-wider opacity-60">Required for generation</span>
+                </div>
               </button>
             )}
           </div>

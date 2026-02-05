@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Type, Modality, VideoGenerationReferenceType, GenerateContentResponse } from "@google/genai";
 import { GeneratedResult, VoiceName } from "../types";
 
@@ -37,7 +36,6 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 5, delay = 3000): Pr
     if (retries > 0 && isRetryable) {
       console.warn(`Gemini API Busy/Overloaded. Retrying in ${delay}ms... (${retries} retries left)`);
       await new Promise(resolve => setTimeout(resolve, delay));
-      // Increase delay for next attempt (exponential backoff)
       return withRetry(fn, retries - 1, Math.floor(delay * 1.5));
     }
     throw error;
@@ -57,7 +55,6 @@ const createWavUrl = (base64PCM: string): string => {
       bytes[i] = binaryString.charCodeAt(i);
     }
     
-    // Ensure 16-bit alignment (2 bytes per sample)
     const alignedLength = Math.floor(bytes.byteLength / 2) * 2;
     const int16Data = new Int16Array(bytes.buffer, 0, alignedLength / 2);
     
@@ -95,56 +92,6 @@ const createWavUrl = (base64PCM: string): string => {
   }
 };
 
-const generateProductImage = async (ai: GoogleGenAI, name: string, description: string): Promise<{ data: string, mimeType: string }> => {
-  const extractImage = (response: any) => {
-    const candidates = response.candidates || [];
-    if (candidates.length === 0) return null;
-    const parts = candidates[0].content?.parts || [];
-    for (const part of parts) {
-      if (part.inlineData) {
-        return { data: part.inlineData.data, mimeType: part.inlineData.mimeType };
-      }
-    }
-    return null;
-  };
-
-  try {
-    // Explicitly cast the response to GenerateContentResponse to fix 'unknown' type errors.
-    const response = await withRetry(() => ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: {
-        parts: [{ text: `High-end professional studio photography of ${name}. ${description}. 4k, ultra-detailed.` }]
-      },
-      config: {
-        imageConfig: { aspectRatio: "16:9", imageSize: "1K" }
-      }
-    })) as GenerateContentResponse;
-    
-    const result = extractImage(response);
-    if (result) return result;
-  } catch (e) {
-    console.warn("Pro image generation failed/overloaded, falling back to Flash image.", e);
-  }
-
-  try {
-    // Explicitly cast the response to GenerateContentResponse to fix 'unknown' type errors.
-    const response = await withRetry(() => ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: {
-        parts: [{ text: `Professional product photography of ${name}. ${description}.` }]
-      },
-      config: { imageConfig: { aspectRatio: "16:9" } }
-    })) as GenerateContentResponse;
-
-    const result = extractImage(response);
-    if (result) return result;
-  } catch (e) {
-    console.error("Flash image generation failed:", e);
-  }
-
-  throw new Error("Unable to generate product imagery. Please check your API usage or try again.");
-};
-
 const enhancePromptWithSearch = async (
   ai: GoogleGenAI, 
   name: string, 
@@ -160,19 +107,20 @@ const enhancePromptWithSearch = async (
   };
 
   try {
-    // Explicitly cast the response to GenerateContentResponse to fix 'unknown' type errors.
-    const response = await withRetry(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Expert commercial director task.
-      Product: "${name}" (${url})
+    const prompt = `Expert commercial director task.
+      Product: "${name}" ${url ? `(Website: ${url})` : ''}
       Details: "${description}"
       Requirements: Intro(${introText || 'none'}), Outro(${outroText || 'none'})
 
-      Research product via Google Search for accuracy. 
+      ${url ? 'Research product via Google Search for accuracy using the provided URL.' : 'Research product via Google Search for accuracy using the product name and description.'}
       Output ONLY a JSON object with:
       - visualPrompt: Detailed cinematic scene description for video generation.
       - slogan: Catchy 3-5 word slogan.
-      - voiceoverScript: Engaging 15-second script.`,
+      - voiceoverScript: Engaging 15-second script.`;
+
+    const response = await withRetry(() => ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
         responseMimeType: "application/json",
@@ -191,7 +139,6 @@ const enhancePromptWithSearch = async (
     const text = response.text;
     if (!text) return fallback;
     
-    // Clean potential markdown and whitespace
     const cleanedText = text.replace(/```json/g, '').replace(/```/g, '').trim();
     try {
       return JSON.parse(cleanedText);
@@ -207,7 +154,6 @@ const enhancePromptWithSearch = async (
 
 const generateVoiceover = async (ai: GoogleGenAI, script: string, voiceName: VoiceName): Promise<string | null> => {
   try {
-    // Explicitly cast the response to GenerateContentResponse to fix 'unknown' type errors.
     const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: `Say this script naturally and professionally: ${script}` }] }],
@@ -240,7 +186,6 @@ export const extendVideo = async (
   const apiKey = (process.env.API_KEY || "").trim();
   const ai = new GoogleGenAI({ apiKey });
 
-  // Use 'any' type for operation to avoid 'unknown' type property access errors.
   let operation: any = await withRetry(() => ai.models.generateVideos({
     model: 'veo-3.1-generate-preview',
     prompt: `Smoothly continue the video sequence: ${prompt}`,
@@ -284,27 +229,23 @@ export const generateVideoAd = async (
   const apiKey = (process.env.API_KEY || "").trim();
   const ai = new GoogleGenAI({ apiKey });
 
-  // 1. Image preparation (Resilient)
-  let imageBase64: string;
-  let mimeType = 'image/png';
-  if (images.length > 0) {
-    imageBase64 = await fileToBase64(images[0]);
-    mimeType = images[0].type;
-  } else {
-    const genImage = await generateProductImage(ai, name, description);
-    imageBase64 = genImage.data;
-    mimeType = genImage.mimeType;
+  if (images.length === 0) {
+    throw new Error("A product image is required for generation.");
   }
+
+  // 1. Image preparation
+  const imageBase64 = await fileToBase64(images[0]);
+  const mimeType = images[0].type;
   const imagePart = { imageBytes: imageBase64, mimeType };
 
-  // 2. Creative Research (Resilient Fallback)
+  // 2. Creative Research
   const creative = await enhancePromptWithSearch(
     ai, name, websiteUrl, description, introText, outroText
   );
 
   const finalPrompt = `${creative.visualPrompt} Incorporate the slogan overlay: "${creative.slogan}". High-end production value.`;
 
-  // 3. Parallel Task: Video and Voiceover (Voiceover failure is non-blocking)
+  // 3. Parallel Task: Video and Voiceover
   const videoTask = (async () => {
     const model = aspectRatio === '9:16' ? 'veo-3.1-fast-generate-preview' : 'veo-3.1-generate-preview';
     
@@ -318,7 +259,6 @@ export const generateVideoAd = async (
       }
     };
 
-    // Routing image reference based on model requirement
     if (aspectRatio === '9:16') {
       videoConfig.image = imagePart;
     } else {
@@ -328,7 +268,6 @@ export const generateVideoAd = async (
       }];
     }
 
-    // Use 'any' type for operation to avoid 'unknown' type property access errors.
     let operation: any = await withRetry(() => ai.models.generateVideos(videoConfig));
 
     while (!operation.done) {
@@ -348,7 +287,6 @@ export const generateVideoAd = async (
 
   const audioTask = generateVoiceover(ai, creative.voiceoverScript, voice);
   
-  // Await results
   try {
     const [videoResult, audioUrl] = await Promise.all([videoTask, audioTask]);
     return {
