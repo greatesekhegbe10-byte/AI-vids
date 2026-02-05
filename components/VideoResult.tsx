@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from 'react';
-import { Download, RefreshCw, Play } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Download, RefreshCw, Loader2 } from 'lucide-react';
 
 interface VideoResultProps {
   videoUrl: string;
@@ -9,10 +9,14 @@ interface VideoResultProps {
 
 export const VideoResult: React.FC<VideoResultProps> = ({ videoUrl, onReset, aspectRatio }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const handleDownload = async () => {
+    setIsDownloading(true);
     try {
       const response = await fetch(videoUrl);
+      if (!response.ok) throw new Error("Network response was not ok");
+      
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -24,7 +28,9 @@ export const VideoResult: React.FC<VideoResultProps> = ({ videoUrl, onReset, asp
       document.body.removeChild(a);
     } catch (error) {
       console.error("Download failed", error);
-      alert("Could not download the video directly. Please try right-clicking the video and selecting 'Save Video As'.");
+      alert("Could not download automatically. Please right-click the video player and select 'Save Video As...'.");
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -42,10 +48,15 @@ export const VideoResult: React.FC<VideoResultProps> = ({ videoUrl, onReset, asp
           </button>
           <button
             onClick={handleDownload}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-indigo-500/20"
+            disabled={isDownloading}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors shadow-lg shadow-indigo-500/20 disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            <Download size={16} />
-            Download MP4
+            {isDownloading ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Download size={16} />
+            )}
+            {isDownloading ? 'Downloading...' : 'Download MP4'}
           </button>
         </div>
       </div>
@@ -70,7 +81,7 @@ export const VideoResult: React.FC<VideoResultProps> = ({ videoUrl, onReset, asp
       <div className="mt-6 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
         <h3 className="text-sm font-semibold text-slate-300 mb-1">AI Usage Note</h3>
         <p className="text-xs text-slate-500">
-          This video was generated using Google's Veo 3.1 model. The visuals are AI interpretations of your product images.
+          This video was generated using Google's Veo 3.1 model (720p Fast Preview). The visuals are AI interpretations of your product images.
           For commercial use, ensure you review the content for accuracy.
         </p>
       </div>

@@ -43,10 +43,8 @@ export const generateVideoAd = async (
   };
 
   // 2. Construct Prompt
-  const prompt = `A professional, cinematic video advertisement for a product named "${name}". 
-  Product Description: ${description}. 
-  The video should start with the provided image and evolve into a dynamic commercial shot with elegant camera movements, commercial lighting, and a modern aesthetic. 
-  Showcase the product clearly. Photorealistic, 4k look.`;
+  // Optimized for speed and clarity
+  const prompt = `Commercial for "${name}". ${description}. Cinematic lighting, 4k.`;
 
   // 3. Call API with Fast Model
   let operation;
@@ -58,7 +56,7 @@ export const generateVideoAd = async (
       image: imagePart,
       config: {
         numberOfVideos: 1,
-        resolution: '720p',
+        resolution: '720p', // API only supports 720p or 1080p. 720p is the fastest/lowest.
         aspectRatio: aspectRatio
       }
     });
@@ -81,13 +79,21 @@ export const generateVideoAd = async (
     }
   }
 
-  // 5. Extract Result
+  // 5. Check for errors in the operation result
+  if (operation.error) {
+    console.error("Video generation failed:", operation.error);
+    throw new Error(`Generation failed: ${operation.error.message || "Unknown error"}`);
+  }
+
+  // 6. Extract Result
   const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
   
   if (!videoUri) {
-    throw new Error("Video generation completed but no video URI was returned.");
+    // This happens if done=true but no video and no error message. 
+    // Usually implies content safety filtering if no specific error was returned.
+    throw new Error("Video generation completed but no video was returned. The content may have been filtered for safety.");
   }
 
-  // 6. Append Key for Download
+  // 7. Append Key for Download
   return `${videoUri}&key=${apiKey}`;
 };
