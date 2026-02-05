@@ -1,26 +1,48 @@
-import React from 'react';
+import React, { ComponentProps } from 'react';
 import { 
   Wand2, 
   Upload, 
   Play, 
+  Pause,
   Loader2, 
   AlertCircle, 
   Download, 
   RefreshCw,
   Video,
   Image as ImageIcon,
-  Key
+  Key,
+  Plus,
+  Trash2,
+  Mic,
+  Type,
+  Layers,
+  Scissors,
+  Music,
+  Maximize,
+  X,
+  Globe
 } from 'lucide-react';
 
 export { 
   Wand2, 
   Upload, 
   Play, 
+  Pause,
   Loader2, 
   AlertCircle, 
   Download, 
-  RefreshCw,
-  Video,
-  ImageIcon,
-  Key
+  RefreshCw, 
+  Video, 
+  ImageIcon, 
+  Key, 
+  Plus, 
+  Trash2, 
+  Mic, 
+  Type, 
+  Layers, 
+  Scissors, 
+  Music, 
+  Maximize,
+  X,
+  Globe
 };

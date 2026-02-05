@@ -1,20 +1,67 @@
-import React, { useRef, useState } from 'react';
-import { Download, RefreshCw, Loader2 } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Download, RefreshCw, Loader2, Volume2, VolumeX } from 'lucide-react';
 
 interface VideoResultProps {
   videoUrl: string;
+  audioUrl: string | null;
   onReset: () => void;
   aspectRatio: '16:9' | '9:16';
 }
 
-export const VideoResult: React.FC<VideoResultProps> = ({ videoUrl, onReset, aspectRatio }) => {
+export const VideoResult: React.FC<VideoResultProps> = ({ videoUrl, audioUrl, onReset, aspectRatio }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+
+  // Synchronize Audio with Video
+  useEffect(() => {
+    const video = videoRef.current;
+    const audio = audioRef.current;
+
+    if (!video || !audio) return;
+
+    const handlePlay = () => {
+      if (audio.paused) audio.play().catch(e => console.log("Audio play prevented", e));
+    };
+    const handlePause = () => audio.pause();
+    const handleSeek = () => { 
+      if (Math.abs(audio.currentTime - video.currentTime) > 0.1) {
+        audio.currentTime = video.currentTime;
+      }
+    };
+    const handleEnded = () => {
+      video.currentTime = 0;
+      audio.currentTime = 0;
+      video.play().catch(() => {});
+      audio.play().catch(() => {});
+    };
+
+    video.addEventListener('play', handlePlay);
+    video.addEventListener('pause', handlePause);
+    video.addEventListener('seeking', handleSeek);
+    video.loop = false; 
+    video.addEventListener('ended', handleEnded);
+
+    return () => {
+      video.removeEventListener('play', handlePlay);
+      video.removeEventListener('pause', handlePause);
+      video.removeEventListener('seeking', handleSeek);
+      video.removeEventListener('ended', handleEnded);
+    };
+  }, [audioUrl, videoUrl]);
+
+  const toggleMute = () => {
+    if (audioRef.current) {
+      audioRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  };
 
   const handleDownload = async () => {
     setIsDownloading(true);
     try {
-      const response = await fetch(videoUrl);
+      const response = await fetch(videoUrl, { cache: 'no-store' });
       if (!response.ok) throw new Error("Network response was not ok");
       
       const blob = await response.blob();
@@ -24,11 +71,15 @@ export const VideoResult: React.FC<VideoResultProps> = ({ videoUrl, onReset, asp
       a.download = `ad-genius-${Date.now()}.mp4`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 100);
     } catch (error) {
       console.error("Download failed", error);
-      alert("Could not download automatically. Please right-click the video player and select 'Save Video As...'.");
+      // Final fallback
+      window.open(videoUrl, '_blank');
     } finally {
       setIsDownloading(false);
     }
@@ -69,11 +120,22 @@ export const VideoResult: React.FC<VideoResultProps> = ({ videoUrl, onReset, asp
                src={videoUrl}
                controls
                autoPlay
-               loop
+               playsInline
                className="w-full h-full object-cover"
              >
                Your browser does not support the video tag.
              </video>
+             
+             {audioUrl && <audio ref={audioRef} src={audioUrl} preload="auto" />}
+
+             {audioUrl && (
+               <button 
+                 onClick={toggleMute}
+                 className="absolute bottom-16 right-4 z-10 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white backdrop-blur-md transition-all"
+               >
+                 {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
+               </button>
+             )}
            </div>
          </div>
       </div>
@@ -81,8 +143,7 @@ export const VideoResult: React.FC<VideoResultProps> = ({ videoUrl, onReset, asp
       <div className="mt-6 p-4 bg-slate-800/50 rounded-xl border border-slate-700">
         <h3 className="text-sm font-semibold text-slate-300 mb-1">AI Usage Note</h3>
         <p className="text-xs text-slate-500">
-          This video was generated using Google's Veo 3.1 model (720p Fast Preview). The visuals are AI interpretations of your product images.
-          For commercial use, ensure you review the content for accuracy.
+          This video was generated using Gemini Veo 3.1. The voiceover was generated using Gemini 2.5 Flash TTS.
         </p>
       </div>
     </div>
