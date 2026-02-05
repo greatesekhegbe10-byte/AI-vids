@@ -66,7 +66,8 @@ const App: React.FC = () => {
         data.name,
         data.description,
         data.images,
-        data.aspectRatio
+        data.aspectRatio,
+        data.websiteUrl
       );
       setVideoUrl(url);
       setAppState(AppState.SUCCESS);
@@ -136,7 +137,7 @@ const App: React.FC = () => {
                    Transform Products into <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">Video Ads</span>
                  </h2>
                  <p className="text-lg text-slate-400 max-w-2xl mx-auto">
-                   Upload your product images, describe the vibe, and let our AI generate a professional 4K commercial in minutes.
+                   Enter your product URL, describe the vibe, and let our AI generate a professional 4K commercial in minutes.
                  </p>
                </div>
                <InputForm onSubmit={handleFormSubmit} isGenerating={false} />

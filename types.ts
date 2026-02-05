@@ -7,6 +7,7 @@ export enum AppState {
 
 export interface ProductData {
   name: string;
+  websiteUrl: string;
   description: string;
   images: File[];
   aspectRatio: '16:9' | '9:16';

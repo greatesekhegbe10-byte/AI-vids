@@ -19,7 +19,8 @@ export const generateVideoAd = async (
   name: string, 
   description: string, 
   images: File[], 
-  aspectRatio: '16:9' | '9:16'
+  aspectRatio: '16:9' | '9:16',
+  websiteUrl: string
 ): Promise<string> => {
   
   const apiKey = process.env.API_KEY;
@@ -29,37 +30,50 @@ export const generateVideoAd = async (
 
   const ai = new GoogleGenAI({ apiKey });
 
-  // 1. Prepare Image (Fast model uses a single starting image)
-  if (images.length === 0) {
-    throw new Error("No image provided");
+  // 1. Prepare Image (if provided)
+  let imagePart = undefined;
+  if (images.length > 0) {
+    const primaryImage = images[0];
+    const base64Data = await fileToBase64(primaryImage);
+    
+    imagePart = {
+      imageBytes: base64Data,
+      mimeType: primaryImage.type,
+    };
   }
 
-  const primaryImage = images[0];
-  const base64Data = await fileToBase64(primaryImage);
-  
-  const imagePart = {
-    imageBytes: base64Data,
-    mimeType: primaryImage.type,
-  };
-
   // 2. Construct Prompt
-  // Optimized for speed and clarity
-  const prompt = `Commercial for "${name}". ${description}. Cinematic lighting, 4k.`;
+  // Ensure we emphasize the website URL in the overlay
+  const urlInstruction = `Include a clear text overlay showing: "${websiteUrl}".`;
+  
+  // Refine prompt based on presence of image
+  let prompt = "";
+  if (imagePart) {
+     prompt = `Commercial for "${name}". ${description}. ${urlInstruction} Cinematic lighting, 4k. Start with the product image and transform it dynamically.`;
+  } else {
+     prompt = `Commercial for "${name}". ${description}. ${urlInstruction} High quality photorealistic product visualization. Cinematic lighting, 4k.`;
+  }
 
   // 3. Call API with Fast Model
   let operation;
   
   try {
-    operation = await ai.models.generateVideos({
+    const requestOptions: any = {
       model: 'veo-3.1-fast-generate-preview',
       prompt: prompt,
-      image: imagePart,
       config: {
         numberOfVideos: 1,
         resolution: '720p', // API only supports 720p or 1080p. 720p is the fastest/lowest.
         aspectRatio: aspectRatio
       }
-    });
+    };
+
+    // Only add image property if it exists
+    if (imagePart) {
+      requestOptions.image = imagePart;
+    }
+
+    operation = await ai.models.generateVideos(requestOptions);
   } catch (e: any) {
     console.error("Initial request failed", e);
     throw new Error(`Failed to start video generation: ${e.message}`);

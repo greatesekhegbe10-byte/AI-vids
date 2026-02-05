@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { ProductData } from '../types';
-import { Upload, ImageIcon, X } from 'lucide-react';
+import { Upload, ImageIcon, X, Globe } from 'lucide-react';
 
 interface InputFormProps {
   onSubmit: (data: ProductData) => void;
@@ -9,6 +9,7 @@ interface InputFormProps {
 
 export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isGenerating }) => {
   const [name, setName] = useState('');
+  const [websiteUrl, setWebsiteUrl] = useState('');
   const [description, setDescription] = useState('');
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('9:16');
   const [images, setImages] = useState<File[]>([]);
@@ -28,11 +29,9 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isGenerating }) 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (images.length === 0) {
-      alert("Please upload a product image.");
-      return;
-    }
-    onSubmit({ name, description, images, aspectRatio });
+    // Validation: Website URL is required (handled by 'required' attribute on input), 
+    // Image is now optional.
+    onSubmit({ name, websiteUrl, description, images, aspectRatio });
   };
 
   return (
@@ -40,18 +39,39 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isGenerating }) 
       <h2 className="text-2xl font-semibold text-white mb-6">Create Your Ad</h2>
       
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Product Name */}
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Product Name</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            disabled={isGenerating}
-            placeholder="e.g. NeoRunner 5000"
-            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:opacity-50"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Product Name */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">Product Name</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+              disabled={isGenerating}
+              placeholder="e.g. NeoRunner 5000"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:opacity-50"
+            />
+          </div>
+
+          {/* Website URL */}
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+               Website
+            </label>
+            <div className="relative">
+              <Globe className="absolute left-3 top-3.5 w-4 h-4 text-slate-500" />
+              <input
+                type="url"
+                value={websiteUrl}
+                onChange={(e) => setWebsiteUrl(e.target.value)}
+                required
+                disabled={isGenerating}
+                placeholder="www.example.com"
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-10 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all disabled:opacity-50"
+              />
+            </div>
+          </div>
         </div>
 
         {/* Aspect Ratio Selection */}
@@ -102,7 +122,9 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isGenerating }) 
 
         {/* Image Upload */}
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Product Image (Required)</label>
+          <label className="block text-sm font-medium text-slate-300 mb-2">
+            Product Image <span className="text-xs text-slate-500 font-normal ml-1">(Optional)</span>
+          </label>
           
           <div className="mb-4">
             {images.length > 0 ? (
@@ -142,14 +164,14 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isGenerating }) 
           />
           <p className="text-xs text-slate-500 flex items-center gap-1">
             <ImageIcon size={12} />
-            This image will be used as the starting frame for your video.
+            Provide an image for better product accuracy, or skip to generate from scratch.
           </p>
         </div>
 
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={isGenerating || images.length === 0}
+          disabled={isGenerating}
           className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/25 transform transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
           {isGenerating ? 'Generating Video...' : 'Generate Video Ad'}
