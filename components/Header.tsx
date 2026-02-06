@@ -23,14 +23,15 @@ export const Header: React.FC<HeaderProps> = ({ onSelectKey, apiKeyReady }) => {
         </div>
       </div>
       
-      <div className="flex items-center gap-4 pointer-events-auto">
+      <div className="flex items-center gap-4">
         <button 
-          onClick={onSelectKey}
+          onClick={(e) => { e.preventDefault(); onSelectKey(); }}
+          onTouchStart={(e) => { /* Fast trigger for mobile */ }}
           type="button"
-          className={`flex items-center gap-3 px-6 py-4 md:px-6 md:py-3 rounded-2xl md:rounded-[20px] text-[10px] md:text-xs font-black uppercase tracking-widest transition-all border active:scale-90 touch-manipulation pointer-events-auto relative z-[110] cursor-pointer ${
+          className={`relative flex items-center justify-center gap-3 px-6 py-4 md:px-6 md:py-3 rounded-2xl md:rounded-[20px] text-[10px] md:text-xs font-black uppercase tracking-widest transition-all border active:scale-95 touch-manipulation pointer-events-auto z-[110] cursor-pointer min-w-[100px] min-h-[48px] ${
             apiKeyReady 
-              ? 'bg-slate-900/60 border-slate-800 text-indigo-400' 
-              : 'bg-indigo-600 border-indigo-400 text-white shadow-2xl shadow-indigo-500/40'
+              ? 'bg-slate-900/60 border-slate-800 text-indigo-400 active:bg-slate-800' 
+              : 'bg-indigo-600 border-indigo-400 text-white shadow-2xl shadow-indigo-500/40 active:bg-indigo-700'
           }`}
         >
           <Key size={16} />

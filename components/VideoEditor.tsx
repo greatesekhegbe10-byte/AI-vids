@@ -1,3 +1,4 @@
+
 import React, { useRef, useState, useEffect } from 'react';
 import { GeneratedResult } from '../types';
 import { Play, Pause, Download, Maximize, Scissors, Type, Music, Loader2 } from './Icons';
@@ -18,7 +19,6 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
   const [isDownloading, setIsDownloading] = useState(false);
   const [showMobileControls, setShowMobileControls] = useState(false);
   
-  // Editor State
   const [overlayText, setOverlayText] = useState('');
   const [showOverlay, setShowOverlay] = useState(false);
 
@@ -55,7 +55,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
     };
   }, [volume, result]);
 
-  const togglePlay = (e?: React.MouseEvent) => {
+  const togglePlay = (e?: React.MouseEvent | React.TouchEvent) => {
     e?.stopPropagation();
     if (videoRef.current) {
       if (isPlaying) {
@@ -91,6 +91,30 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
 
   const handleDownload = async () => {
     setIsDownloading(true);
+    
+    // Check if device is mobile/tablet for different download strategy
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      try {
+        // Direct link approach works better on Mobile/Tablets to avoid 403 or Blob errors
+        const link = document.createElement('a');
+        link.href = result.videoUrl;
+        link.target = '_blank';
+        link.download = `adgenius-${Date.now()}.mp4`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Brief delay to simulate the process
+        setTimeout(() => setIsDownloading(false), 2000);
+        return;
+      } catch (e) {
+        console.error("Mobile download failed", e);
+      }
+    }
+
+    // Standard Desktop Logic
     try {
       const response = await fetch(result.videoUrl, { 
         cache: 'no-store',
@@ -121,9 +145,8 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
 
   return (
     <div className="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn pb-12">
-      {/* Main Player */}
       <div 
-        className="lg:col-span-2 bg-black rounded-3xl overflow-hidden shadow-2xl relative group flex items-center justify-center min-h-[400px] cursor-pointer"
+        className="lg:col-span-2 bg-black rounded-3xl overflow-hidden shadow-2xl relative group flex items-center justify-center min-h-[400px] cursor-pointer touch-manipulation"
         onClick={handleContainerClick}
       >
         <div className={`relative ${aspectRatio === '9:16' ? 'h-full max-h-[750px] aspect-[9/16]' : 'w-full aspect-video'}`}>
@@ -136,7 +159,6 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
            />
            {result.audioUrl && <audio ref={audioRef} src={result.audioUrl} crossOrigin="anonymous" />}
            
-           {/* Text Overlay Layer */}
            {showOverlay && overlayText && (
              <div className="absolute bottom-16 left-0 right-0 text-center pointer-events-none px-4">
                <h2 className="text-lg md:text-3xl font-black text-white drop-shadow-[0_2px_15px_rgba(0,0,0,1)] px-5 py-2.5 bg-indigo-600 inline-block rounded-xl uppercase tracking-wider">
@@ -145,11 +167,11 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
              </div>
            )}
 
-           {/* Central Toggle UI (Mobile & Desktop) */}
            <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${(!isPlaying || showMobileControls) ? 'opacity-100' : 'opacity-0'}`}>
               <button 
                 onClick={togglePlay}
-                className="bg-black/40 p-8 md:p-10 rounded-full backdrop-blur-xl border border-white/20 active:scale-90 transition-transform shadow-2xl"
+                onTouchStart={(e) => { e.stopPropagation(); togglePlay(); }}
+                className="bg-black/40 p-8 md:p-10 rounded-full backdrop-blur-xl border border-white/20 active:scale-90 transition-transform shadow-2xl pointer-events-auto"
               >
                 {isPlaying ? (
                   <Pause className="w-8 h-8 md:w-12 md:h-12 text-white fill-white" />
@@ -161,7 +183,6 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
         </div>
       </div>
 
-      {/* Control Panel */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 flex flex-col gap-6 md:gap-8 shadow-xl">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400 border border-indigo-500/20">
@@ -173,7 +194,6 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
           </div>
         </div>
 
-        {/* Controls Container */}
         <div className="space-y-6">
           <div className="space-y-4">
             <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center justify-between">
@@ -207,7 +227,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
               />
               <button 
                 onClick={(e) => { e.stopPropagation(); setShowOverlay(!showOverlay); }}
-                className={`w-full py-3.5 rounded-2xl font-bold text-xs tracking-widest transition-all border active:scale-95 ${showOverlay ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
+                className={`w-full py-4 rounded-2xl font-bold text-xs tracking-widest transition-all border active:scale-95 touch-manipulation ${showOverlay ? 'bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-600/20' : 'bg-slate-800 border-slate-700 text-slate-400'}`}
               >
                 {showOverlay ? 'OVERLAY ACTIVE' : 'PREVIEW OVERLAY'}
               </button>
@@ -215,24 +235,22 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
           </div>
         </div>
 
-        {/* AI Action */}
         <div className="pt-6 border-t border-slate-800 space-y-4">
            <button 
              onClick={(e) => { e.stopPropagation(); handleExtend(); }}
              disabled={isExtending}
-             className="w-full py-4.5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-3 transition-all border border-slate-700 disabled:opacity-50 active:scale-95"
+             className="w-full py-4.5 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-bold text-sm flex items-center justify-center gap-3 transition-all border border-slate-700 disabled:opacity-50 active:scale-95 touch-manipulation"
            >
              {isExtending ? <Loader2 size={20} className="animate-spin text-indigo-400"/> : <Maximize size={20} className="text-indigo-400"/>}
              Extend Ad (+5s)
            </button>
         </div>
 
-        {/* Download Action */}
         <div className="mt-auto">
           <button 
             onClick={(e) => { e.stopPropagation(); handleDownload(); }}
             disabled={isDownloading}
-            className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/30 transition-all active:scale-[0.98] disabled:opacity-70"
+            className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-3 shadow-2xl shadow-indigo-600/30 transition-all active:scale-[0.98] disabled:opacity-70 touch-manipulation"
           >
             {isDownloading ? <Loader2 size={22} className="animate-spin" /> : <Download size={22} />}
             {isDownloading ? 'EXPORTING...' : 'SAVE TO DEVICE'}

@@ -17,7 +17,6 @@ const App: React.FC = () => {
 
   useEffect(() => {
     checkApiKey();
-    // Periodically check for key status updates
     const interval = setInterval(checkApiKey, 5000);
     return () => clearInterval(interval);
   }, []);
@@ -53,7 +52,6 @@ const App: React.FC = () => {
         const errorMessage = error.message || "Unknown Studio Error";
         
         if (errorMessage.includes("entity was not found")) {
-          // If we hit an error specifically about the key not existing in the backend project
           updateItemStatus(nextItem.id, 'FAILED', "Invalid Project Key. Please re-select a paid project.");
           handleSelectKey();
         } else {
@@ -73,12 +71,10 @@ const App: React.FC = () => {
 
   const checkApiKey = async () => {
     const aistudio = (window as any).aistudio;
-    // Fallback logic: if env key is present, we are "ready", but we check if user has explicitly selected one
     const hasEnvKey = !!process.env.API_KEY && process.env.API_KEY !== "";
     
     if (aistudio && aistudio.hasSelectedApiKey) {
       const hasSelected = await aistudio.hasSelectedApiKey();
-      // App is ready if either a key is selected OR the environment has a default one
       setApiKeyReady(hasSelected || hasEnvKey);
     } else {
       setApiKeyReady(hasEnvKey);
@@ -90,7 +86,6 @@ const App: React.FC = () => {
     if (aistudio && aistudio.openSelectKey) {
       try {
         await aistudio.openSelectKey();
-        // Assume readiness to avoid blocking the UI
         setApiKeyReady(true);
       } catch (e) {
         console.error("Studio Setup Error:", e);
@@ -117,7 +112,7 @@ const App: React.FC = () => {
   // Only block with gateway if we have NO key at all
   if (!apiKeyReady && (!process.env.API_KEY || process.env.API_KEY === "")) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8 relative overflow-hidden">
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8 relative overflow-hidden" style={{ isolation: 'isolate' }}>
         <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-indigo-600/10 blur-[150px] rounded-full"></div>
         <div className="absolute bottom-[-15%] left-[-10%] w-[60%] h-[60%] bg-purple-600/10 blur-[150px] rounded-full"></div>
 
@@ -136,8 +131,9 @@ const App: React.FC = () => {
 
           <div className="space-y-4">
             <button 
-              onClick={handleSelectKey} 
-              className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-xl shadow-2xl shadow-indigo-600/40 transition-all active:scale-95 flex items-center justify-center gap-4 border border-indigo-400/20 cursor-pointer pointer-events-auto touch-manipulation"
+              onClick={(e) => { e.preventDefault(); handleSelectKey(); }}
+              onTouchStart={(e) => { /* handleSelectKey trigger */ }}
+              className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-xl shadow-2xl shadow-indigo-600/40 transition-all active:scale-95 flex items-center justify-center gap-4 border border-indigo-400/20 cursor-pointer pointer-events-auto touch-manipulation min-h-[72px]"
             >
               <Key size={24} />
               Setup Studio Key
@@ -146,7 +142,7 @@ const App: React.FC = () => {
               href="https://ai.google.dev/gemini-api/docs/billing" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-full py-4.5 bg-slate-900/40 hover:bg-slate-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all border border-slate-800 shadow-inner"
+              className="w-full py-4.5 bg-slate-900/40 hover:bg-slate-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all border border-slate-800 shadow-inner min-h-[56px]"
             >
               Learn about Paid Tier Keys
               <ExternalLink size={14} />
@@ -233,13 +229,13 @@ const App: React.FC = () => {
                 <div className="flex flex-col gap-4">
                   <button 
                     onClick={() => updateItemStatus(selectedItem.id, 'PENDING')}
-                    className="w-full py-5.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-lg shadow-2xl shadow-indigo-600/40 active:scale-95 transition-all"
+                    className="w-full py-5.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-lg shadow-2xl shadow-indigo-600/40 active:scale-95 transition-all min-h-[64px]"
                   >
                     Retry Render
                   </button>
                   <button 
-                    onClick={handleSelectKey}
-                    className="w-full py-4.5 bg-slate-900 border border-slate-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 cursor-pointer"
+                    onClick={(e) => { e.preventDefault(); handleSelectKey(); }}
+                    className="w-full py-4.5 bg-slate-900 border border-slate-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 cursor-pointer touch-manipulation min-h-[56px]"
                   >
                     Change AI Project Key
                   </button>
