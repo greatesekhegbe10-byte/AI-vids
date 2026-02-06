@@ -16,10 +16,10 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 /**
- * Robust retry wrapper with exponential backoff.
- * Specifically targets 503 (Overloaded), 429 (Rate Limit), and 504 (Gateway Timeout)
+ * Enhanced retry wrapper with longer exponential backoff.
+ * Veo and Search tools often require longer cooldowns during high load.
  */
-async function withRetry<T>(fn: () => Promise<T>, retries = 5, delay = 3000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, retries = 10, delay = 5000): Promise<T> {
   try {
     return await fn();
   } catch (error: any) {
@@ -31,11 +31,13 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 5, delay = 3000): Pr
       errorStr.includes('429') || 
       errorStr.includes('rate limit') ||
       errorStr.includes('504') ||
-      errorStr.includes('deadline');
+      errorStr.includes('deadline') ||
+      errorStr.includes('internal error');
 
     if (retries > 0 && isRetryable) {
-      console.warn(`Gemini API Busy/Overloaded. Retrying in ${delay}ms... (${retries} retries left)`);
+      console.warn(`Gemini API busy/overloaded. Waiting ${delay}ms before retry ${11-retries}...`);
       await new Promise(resolve => setTimeout(resolve, delay));
+      // Progressive backoff: Increase delay by 50% each time
       return withRetry(fn, retries - 1, Math.floor(delay * 1.5));
     }
     throw error;
@@ -44,7 +46,7 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 5, delay = 3000): Pr
 
 /**
  * Generates a WAV URL from raw PCM data.
- * Ensures strict 16-bit alignment to prevent disturbed stream errors.
+ * Fixes alignment to ensure the browser can always decode the stream.
  */
 const createWavUrl = (base64PCM: string): string => {
   try {
@@ -55,6 +57,7 @@ const createWavUrl = (base64PCM: string): string => {
       bytes[i] = binaryString.charCodeAt(i);
     }
     
+    // Ensure 16-bit alignment
     const alignedLength = Math.floor(bytes.byteLength / 2) * 2;
     const int16Data = new Int16Array(bytes.buffer, 0, alignedLength / 2);
     
@@ -93,7 +96,6 @@ const createWavUrl = (base64PCM: string): string => {
 };
 
 const enhancePromptWithSearch = async (
-  ai: GoogleGenAI, 
   name: string, 
   url: string, 
   description: string,
@@ -101,20 +103,23 @@ const enhancePromptWithSearch = async (
   outroText?: string
 ): Promise<{ visualPrompt: string; slogan: string; voiceoverScript: string }> => {
   const fallback = {
-    visualPrompt: `Professional commercial for "${name}". ${introText ? `Intro: ${introText}.` : ''} Highlighting: ${description}. ${outroText ? `Outro: ${outroText}.` : ''} Cinematic lighting, close-ups.`,
-    slogan: name.toUpperCase(),
-    voiceoverScript: `Meet the new ${name}. ${description}. Quality you can trust.`
+    visualPrompt: `High-end commercial for "${name}". ${introText ? `Start with: ${introText}.` : ''} Scene: Dynamic product close-ups with professional studio lighting. Atmosphere: Premium and detailed. Action: High-quality product demonstration. ${outroText ? `End with: ${outroText}.` : ''} 4k resolution, cinematic quality.`,
+    slogan: `${name.toUpperCase()}: REDEFINED.`,
+    voiceoverScript: `Discover the innovation behind ${name}. ${description}. The future is here.`
   };
 
   try {
-    const prompt = `Expert commercial director task.
+    // ALWAYS create a fresh instance to use the latest API_KEY from the selection dialog
+    const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY || "").trim() });
+    
+    const prompt = `Task: Commercial Direction Specialist.
       Product: "${name}" ${url ? `(Website: ${url})` : ''}
       Details: "${description}"
-      Requirements: Intro(${introText || 'none'}), Outro(${outroText || 'none'})
+      Specifics: Intro(${introText || 'none'}), Outro(${outroText || 'none'})
 
-      ${url ? 'Research product via Google Search for accuracy using the provided URL.' : 'Research product via Google Search for accuracy using the product name and description.'}
-      Output ONLY a JSON object with:
-      - visualPrompt: Detailed cinematic scene description for video generation.
+      ${url ? 'Use Google Search to find accurate product info and brand tone from the URL provided.' : 'Generate a creative direction using the product name and description.'}
+      Output strictly JSON:
+      - visualPrompt: Detailed cinematic scene description for video generator.
       - slogan: Catchy 3-5 word slogan.
       - voiceoverScript: Engaging 15-second script.`;
 
@@ -122,7 +127,7 @@ const enhancePromptWithSearch = async (
       model: 'gemini-3-flash-preview',
       contents: prompt,
       config: {
-        tools: [{ googleSearch: {} }],
+        tools: url ? [{ googleSearch: {} }] : [],
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -143,20 +148,23 @@ const enhancePromptWithSearch = async (
     try {
       return JSON.parse(cleanedText);
     } catch (parseError) {
-      console.warn("JSON Parse Error in creative research, using fallback.", parseError);
+      console.warn("Creative JSON parse error, reverting to fallback logic.", parseError);
       return fallback;
     }
   } catch (error) {
-    console.warn("Creative research (enhancePromptWithSearch) failed after retries, using local fallback.", error);
+    console.warn("Creative research (Search Tool) failed after retries. Proceeding with robust internal creative fallback.", error);
     return fallback;
   }
 };
 
-const generateVoiceover = async (ai: GoogleGenAI, script: string, voiceName: VoiceName): Promise<string | null> => {
+const generateVoiceover = async (script: string, voiceName: VoiceName): Promise<string | null> => {
   try {
+    // ALWAYS create a fresh instance to use the latest API_KEY from the selection dialog
+    const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY || "").trim() });
+
     const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
-      contents: [{ parts: [{ text: `Say this script naturally and professionally: ${script}` }] }],
+      contents: [{ parts: [{ text: `Professional commercial reading of this script: ${script}` }] }],
       config: {
         responseModalities: [Modality.AUDIO],
         speechConfig: {
@@ -167,13 +175,12 @@ const generateVoiceover = async (ai: GoogleGenAI, script: string, voiceName: Voi
       },
     })) as GenerateContentResponse;
     
-    const candidates = response.candidates || [];
-    const base64Audio = candidates[0]?.content?.parts?.[0]?.inlineData?.data;
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
     if (!base64Audio) return null;
     
     return createWavUrl(base64Audio);
   } catch (e) {
-    console.warn("Voiceover generation failed after retries.", e);
+    console.warn("Voiceover generation failed. Proceeding with silent video.", e);
     return null;
   }
 };
@@ -184,11 +191,12 @@ export const extendVideo = async (
   aspectRatio: '16:9' | '9:16'
 ): Promise<GeneratedResult> => {
   const apiKey = (process.env.API_KEY || "").trim();
+  // ALWAYS create a fresh instance to use the latest API_KEY from the selection dialog
   const ai = new GoogleGenAI({ apiKey });
 
   let operation: any = await withRetry(() => ai.models.generateVideos({
     model: 'veo-3.1-generate-preview',
-    prompt: `Smoothly continue the video sequence: ${prompt}`,
+    prompt: `Smoothly extend the previous sequence: ${prompt}`,
     video: originalVideo,
     config: {
       numberOfVideos: 1,
@@ -199,15 +207,17 @@ export const extendVideo = async (
 
   while (!operation.done) {
     await new Promise(resolve => setTimeout(resolve, 10000));
-    operation = await withRetry(() => ai.operations.getVideosOperation({ operation: operation }));
+    // ALWAYS create a fresh instance for operations too
+    const opAi = new GoogleGenAI({ apiKey: (process.env.API_KEY || "").trim() });
+    operation = await withRetry(() => opAi.operations.getVideosOperation({ operation: operation }));
   }
 
   if (operation.error) {
-    throw new Error(`Extension failed: ${operation.error.message || "Operation Error"}`);
+    throw new Error(`Extension error: ${operation.error.message || "Failed to extend video."}`);
   }
 
   const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
-  if (!videoUri) throw new Error("Extension failed: No video URI returned.");
+  if (!videoUri) throw new Error("Extension returned no data.");
 
   return {
     videoUrl: `${videoUri}&key=${apiKey}`,
@@ -227,27 +237,28 @@ export const generateVideoAd = async (
   outroText?: string
 ): Promise<GeneratedResult> => {
   const apiKey = (process.env.API_KEY || "").trim();
-  const ai = new GoogleGenAI({ apiKey });
+  if (!apiKey) throw new Error("Please select an API key to begin.");
 
   if (images.length === 0) {
-    throw new Error("A product image is required for generation.");
+    throw new Error("A product image is mandatory for high-quality ad generation.");
   }
 
-  // 1. Image preparation
+  // 1. Process Reference Image
   const imageBase64 = await fileToBase64(images[0]);
   const mimeType = images[0].type;
   const imagePart = { imageBytes: imageBase64, mimeType };
 
-  // 2. Creative Research
+  // 2. Research Phase (Search-Optional/Fail-Safe)
   const creative = await enhancePromptWithSearch(
-    ai, name, websiteUrl, description, introText, outroText
+    name, websiteUrl, description, introText, outroText
   );
 
-  const finalPrompt = `${creative.visualPrompt} Incorporate the slogan overlay: "${creative.slogan}". High-end production value.`;
+  const finalPrompt = `${creative.visualPrompt} Feature a professional slogan overlay that says: "${creative.slogan}". Polished marketing aesthetics.`;
 
-  // 3. Parallel Task: Video and Voiceover
+  // 3. Main Generation Loop
   const videoTask = (async () => {
-    const model = aspectRatio === '9:16' ? 'veo-3.1-fast-generate-preview' : 'veo-3.1-generate-preview';
+    // Fast preview model has higher capacity/availability
+    const model = 'veo-3.1-fast-generate-preview';
     
     const videoConfig: any = {
       model,
@@ -259,33 +270,34 @@ export const generateVideoAd = async (
       }
     };
 
-    if (aspectRatio === '9:16') {
-      videoConfig.image = imagePart;
-    } else {
-      videoConfig.config.referenceImages = [{
-        image: imagePart,
-        referenceType: VideoGenerationReferenceType.ASSET
-      }];
-    }
+    // Fast preview supports starting image via the 'image' field directly
+    videoConfig.image = imagePart;
 
+    // ALWAYS create a fresh instance
+    const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY || "").trim() });
     let operation: any = await withRetry(() => ai.models.generateVideos(videoConfig));
 
-    while (!operation.done) {
+    // Wait loop with safety threshold
+    let attempts = 0;
+    while (!operation.done && attempts < 90) {
       await new Promise(resolve => setTimeout(resolve, 10000));
-      operation = await withRetry(() => ai.operations.getVideosOperation({ operation: operation }));
+      // Re-instantiate for each poll just in case
+      const pollAi = new GoogleGenAI({ apiKey: (process.env.API_KEY || "").trim() });
+      operation = await withRetry(() => pollAi.operations.getVideosOperation({ operation: operation }));
+      attempts++;
     }
 
     if (operation.error) {
-      throw new Error(`Veo Generation Error: ${operation.error.message || "Unknown error"}`);
+      throw new Error(`Veo Engine: ${operation.error.message || "The generation was cancelled by the server."}`);
     }
     
     const video = operation.response?.generatedVideos?.[0]?.video;
-    if (!video?.uri) throw new Error("No video was returned from the AI model.");
+    if (!video?.uri) throw new Error("Video render completed but no data URI was returned.");
 
-    return { uri: `${video.uri}&key=${apiKey}`, raw: video };
+    return { uri: `${video.uri}&key=${(process.env.API_KEY || "").trim()}`, raw: video };
   })();
 
-  const audioTask = generateVoiceover(ai, creative.voiceoverScript, voice);
+  const audioTask = generateVoiceover(creative.voiceoverScript, voice);
   
   try {
     const [videoResult, audioUrl] = await Promise.all([videoTask, audioTask]);
@@ -295,7 +307,7 @@ export const generateVideoAd = async (
       videoOperation: videoResult.raw
     };
   } catch (e: any) {
-    console.error("Critical Generation Error:", e);
+    console.error("Ad Genius Generation Error:", e);
     throw e;
   }
 };
