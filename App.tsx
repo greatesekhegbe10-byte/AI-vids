@@ -1,19 +1,22 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/Header';
 import { InputForm } from './components/InputForm';
 import { BatchQueue } from './components/BatchQueue';
 import { VideoEditor } from './components/VideoEditor';
 import { LoadingScreen } from './components/LoadingScreen';
-import { generateVideoAd } from './services/geminiService';
-import { ProductData, BatchItem } from './types';
-import { AlertCircle, Key, Clock, ExternalLink, ShieldCheck } from 'lucide-react';
+import { generateCreativeConcept, initiateVideoRender, pollVideoAdStatus, generateVoiceover } from './services/geminiService';
+import { ProductData, BatchItem, CreativeConcept } from './types';
+import { AlertCircle, Key, Clock, ExternalLink, ShieldCheck, FileText, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
   const [queue, setQueue] = useState<BatchItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [apiKeyReady, setApiKeyReady] = useState<boolean>(true); // Default to true if env key exists
-  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [apiKeyReady, setApiKeyReady] = useState<boolean>(true);
+  const [isQueueRunning, setIsQueueRunning] = useState(false);
+  
+  const pollingIntervals = useRef<Record<string, number>>({});
+  const processingRef = useRef<boolean>(false);
 
   useEffect(() => {
     checkApiKey();
@@ -21,58 +24,120 @@ const App: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const updateItemStatus = useCallback((id: string, status: BatchItem['status'], error?: string) => {
+    setQueue(prev => prev.map(i => i.id === id ? { ...i, status, error: error || i.error } : i));
+  }, []);
+
+  const stopPolling = useCallback((id: string) => {
+    if (pollingIntervals.current[id]) {
+      window.clearInterval(pollingIntervals.current[id]);
+      delete pollingIntervals.current[id];
+    }
+  }, []);
+
+  // Main Queue Processor
   useEffect(() => {
+    if (processingRef.current) return;
+
     const processQueue = async () => {
       const nextItem = queue.find(item => item.status === 'PENDING');
-      if (!nextItem || processingId) return;
+      if (!nextItem) {
+        setIsQueueRunning(false);
+        return;
+      }
 
-      setProcessingId(nextItem.id);
-      updateItemStatus(nextItem.id, 'GENERATING');
+      processingRef.current = true;
+      setIsQueueRunning(true);
+      updateItemStatus(nextItem.id, 'INITIATING');
 
       if (!selectedItemId) setSelectedItemId(nextItem.id);
 
       try {
-        const result = await generateVideoAd(
+        // Step 1: Generate Concept (Script, Storyboard, etc.) - Fast/Reliable
+        const concept = await generateCreativeConcept(
           nextItem.data.name,
-          nextItem.data.description,
-          nextItem.data.images,
-          nextItem.data.aspectRatio,
           nextItem.data.websiteUrl,
-          nextItem.data.voice,
-          nextItem.data.introText,
-          nextItem.data.outroText,
-          nextItem.data.targetAudience
+          nextItem.data.description,
+          nextItem.data.targetAudience,
+          nextItem.data.slogan
         );
-        
-        setQueue(prev => prev.map(i => 
-          i.id === nextItem.id ? { ...i, status: 'COMPLETED', result } : i
-        ));
-      } catch (error: any) {
-        console.error(error);
-        const errorMessage = error.message || "Unknown Studio Error";
-        
-        if (errorMessage.includes("entity was not found")) {
-          updateItemStatus(nextItem.id, 'FAILED', "Invalid Project Key. Please re-select a paid project.");
-          handleSelectKey();
-        } else {
-          updateItemStatus(nextItem.id, 'FAILED', errorMessage);
+
+        // Store concept immediately so user can see it
+        setQueue(prev => prev.map(i => i.id === nextItem.id ? { ...i, concept } : i));
+
+        // Step 2: Generate Voiceover
+        const audioUrl = await generateVoiceover(concept.voiceoverScript, nextItem.data.voice);
+
+        // Step 3: Attempt Video Render
+        try {
+          const operationName = await initiateVideoRender(concept, nextItem.data.images, nextItem.data.aspectRatio);
+          setQueue(prev => prev.map(i => 
+            i.id === nextItem.id ? { 
+              ...i, 
+              status: 'POLLING', 
+              operationName,
+              result: { videoUrl: '', audioUrl, concept } 
+            } : i
+          ));
+        } catch (videoError: any) {
+          if (videoError.message.includes('429') || videoError.message.includes('RESOURCE_EXHAUSTED')) {
+            updateItemStatus(nextItem.id, 'QUOTA_WAIT', "Quota Exhausted. Waiting to retry video render...");
+          } else {
+            throw videoError;
+          }
         }
+      } catch (error: any) {
+        console.error("Initiation error:", error);
+        updateItemStatus(nextItem.id, 'FAILED', error.message || "Production Failed");
       } finally {
-        setProcessingId(null);
+        processingRef.current = false;
       }
     };
 
     processQueue();
-  }, [queue, processingId, selectedItemId]);
+  }, [queue, selectedItemId, updateItemStatus]);
 
-  const updateItemStatus = (id: string, status: BatchItem['status'], error?: string) => {
-    setQueue(prev => prev.map(i => i.id === id ? { ...i, status, error: error || i.error } : i));
-  };
+  // Unified Polling Handler
+  useEffect(() => {
+    const activePollingItems = queue.filter(item => (item.status === 'POLLING' || item.status === 'QUOTA_WAIT') && item.operationName);
+    
+    activePollingItems.forEach(item => {
+      if (!pollingIntervals.current[item.id]) {
+        const runPoll = async () => {
+          try {
+            const status = await pollVideoAdStatus(item.operationName!);
+            if (status.done) {
+              stopPolling(item.id);
+              if (status.error) {
+                updateItemStatus(item.id, 'FAILED', status.error);
+              } else if (status.result) {
+                setQueue(prev => prev.map(i => i.id === item.id ? {
+                  ...i,
+                  status: 'COMPLETED',
+                  result: { ...status.result!, audioUrl: i.result?.audioUrl || null, concept: i.concept }
+                } : i));
+              }
+            } else if (status.isQuotaExhausted) {
+              updateItemStatus(item.id, 'QUOTA_WAIT');
+            } else {
+              if (item.status === 'QUOTA_WAIT') updateItemStatus(item.id, 'POLLING');
+            }
+          } catch (e) {
+            console.error(`Poll error for item ${item.id}:`, e);
+          }
+        };
+
+        pollingIntervals.current[item.id] = window.setInterval(runPoll, 20000); // Slower polling for quota safety
+        runPoll(); 
+      }
+    });
+
+    return () => {};
+  }, [queue, stopPolling, updateItemStatus]);
 
   const checkApiKey = async () => {
     const aistudio = (window as any).aistudio;
     const hasEnvKey = !!process.env.API_KEY && process.env.API_KEY !== "";
-    
     if (aistudio && aistudio.hasSelectedApiKey) {
       const hasSelected = await aistudio.hasSelectedApiKey();
       setApiKeyReady(hasSelected || hasEnvKey);
@@ -87,190 +152,140 @@ const App: React.FC = () => {
       try {
         await aistudio.openSelectKey();
         setApiKeyReady(true);
-      } catch (e) {
-        console.error("Studio Setup Error:", e);
-      }
+      } catch (e) { console.error("Studio Setup Error:", e); }
     }
   };
 
   const handleAddToQueue = (data: ProductData) => {
-    const newItem: BatchItem = {
-      id: data.id,
-      data,
-      status: 'PENDING'
-    };
-    setQueue(prev => [...prev, newItem]);
+    setQueue(prev => [...prev, { id: data.id, data, status: 'PENDING' }]);
   };
 
   const handleRemoveFromQueue = (id: string) => {
+    stopPolling(id);
     setQueue(prev => prev.filter(i => i.id !== id));
     if (selectedItemId === id) setSelectedItemId(null);
   };
 
   const selectedItem = queue.find(i => i.id === selectedItemId);
 
-  // Only block with gateway if we have NO key at all
   if (!apiKeyReady && (!process.env.API_KEY || process.env.API_KEY === "")) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8 relative overflow-hidden" style={{ isolation: 'isolate' }}>
-        <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-indigo-600/10 blur-[150px] rounded-full"></div>
-        <div className="absolute bottom-[-15%] left-[-10%] w-[60%] h-[60%] bg-purple-600/10 blur-[150px] rounded-full"></div>
-
-        <div className="max-w-md w-full text-center space-y-12 animate-fadeIn relative z-[60] pointer-events-auto">
-          <div className="space-y-6">
-             <div className="bg-slate-900 border border-slate-700/50 p-10 rounded-[48px] shadow-2xl inline-block">
-                <Key className="w-20 h-20 text-indigo-400 mx-auto" />
-             </div>
-             <div className="space-y-3">
-               <h1 className="text-5xl font-black text-white tracking-tight pt-4">AdGenius</h1>
-               <p className="text-slate-500 text-lg font-medium leading-relaxed max-w-xs mx-auto">
-                 Setup your studio key to begin generating professional AI commercials.
-               </p>
-             </div>
-          </div>
-
-          <div className="space-y-4">
-            <button 
-              onClick={(e) => { e.preventDefault(); handleSelectKey(); }}
-              onTouchStart={(e) => { /* handleSelectKey trigger */ }}
-              className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-xl shadow-2xl shadow-indigo-600/40 transition-all active:scale-95 flex items-center justify-center gap-4 border border-indigo-400/20 cursor-pointer pointer-events-auto touch-manipulation min-h-[72px]"
-            >
-              <Key size={24} />
-              Setup Studio Key
-            </button>
-            <a 
-              href="https://ai.google.dev/gemini-api/docs/billing" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="w-full py-4.5 bg-slate-900/40 hover:bg-slate-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all border border-slate-800 shadow-inner min-h-[56px]"
-            >
-              Learn about Paid Tier Keys
-              <ExternalLink size={14} />
-            </a>
-          </div>
-          
-          <div className="pt-4 flex items-center justify-center gap-3 text-slate-800 font-black uppercase tracking-[0.3em] text-[10px]">
-            <ShieldCheck size={16} />
-            Professional Workspace
-          </div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8 text-white relative">
+        <div className="max-w-md w-full text-center space-y-12 animate-fadeIn relative z-[100]">
+           <div className="bg-slate-900 border border-slate-700/50 p-10 rounded-[48px] shadow-2xl inline-block">
+              <Key className="w-20 h-20 text-indigo-400 mx-auto" />
+           </div>
+           <h1 className="text-5xl font-black">AdGenius</h1>
+           <p className="text-slate-500">Setup your studio key to begin.</p>
+           <button 
+             onPointerDown={handleSelectKey}
+             className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-xl shadow-2xl transition-all min-h-[72px]"
+           >
+             Setup Studio Key
+           </button>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 overflow-x-hidden">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-x-hidden relative">
       <Header onSelectKey={handleSelectKey} apiKeyReady={apiKeyReady} />
 
-      <main className="flex-grow container mx-auto px-6 py-10 md:py-16">
+      <main className="flex-grow container mx-auto px-6 py-10 md:py-16 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16 items-start">
-          <InputForm onSubmit={handleAddToQueue} isProcessing={!!processingId} />
+          <InputForm onSubmit={handleAddToQueue} isProcessing={isQueueRunning} />
           
           <div className="space-y-10">
-            <div className="bg-slate-900/30 p-8 md:p-10 rounded-[48px] border border-slate-800/40 shadow-inner h-full min-h-[500px] flex flex-col">
-               <div className="flex items-center justify-between mb-8 px-2">
-                 <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">Active Queue</h2>
-                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-lg shadow-green-500/20"></div>
-               </div>
-               
+            <div className="bg-slate-900/30 p-8 rounded-[48px] border border-slate-800/40 shadow-inner min-h-[500px] flex flex-col pointer-events-auto">
+               <h2 className="text-2xl font-black text-white mb-8">Active Queue</h2>
                {queue.length === 0 ? (
-                 <div className="flex-grow flex flex-col items-center justify-center text-slate-800 text-center px-12">
-                   <div className="p-8 bg-slate-950 rounded-[40px] mb-8 opacity-40 border border-slate-900 shadow-2xl">
-                     <AlertCircle size={48} />
-                   </div>
-                   <p className="text-sm font-black uppercase tracking-[0.3em]">No Active Tasks</p>
-                   <p className="text-xs mt-3 opacity-60 font-medium">Ready for your next campaign brief.</p>
+                 <div className="flex-grow flex flex-col items-center justify-center text-slate-800">
+                   <AlertCircle size={48} className="mb-4 opacity-40" />
+                   <p className="uppercase tracking-[0.3em] text-[10px]">No Tasks</p>
                  </div>
                ) : (
-                 <BatchQueue 
-                   items={queue} 
-                   onRemove={handleRemoveFromQueue} 
-                   onSelect={(item) => setSelectedItemId(item.id)}
-                   processingId={processingId}
-                 />
+                 <BatchQueue items={queue} onRemove={handleRemoveFromQueue} onSelect={(item) => setSelectedItemId(item.id)} processingId={processingRef.current ? 'active' : null} />
                )}
             </div>
           </div>
         </div>
 
         <div className="pt-12 border-t border-slate-900/30">
-          {!selectedItem && queue.length > 0 && (
-            <div className="py-28 text-center opacity-30">
-              <p className="text-slate-500 font-black uppercase tracking-[0.5em] text-[10px]">Tap a project above to enter Studio</p>
-            </div>
-          )}
+          {selectedItem && (
+            <div className="space-y-12">
+               {/* Concept/Storyboard Preview (Always visible if generated) */}
+               {selectedItem.concept && (
+                 <div className="max-w-4xl mx-auto bg-slate-900/80 border border-slate-700/50 p-8 md:p-12 rounded-[48px] shadow-2xl animate-fadeIn">
+                    <div className="flex items-center gap-4 mb-8">
+                      <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400"><FileText size={24}/></div>
+                      <div>
+                        <h3 className="text-2xl font-black text-white">Ad Blueprint</h3>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black">AI Creative Plan</p>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                       <div className="space-y-6">
+                          <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Voiceover Script</h4>
+                          <p className="text-slate-300 leading-relaxed italic text-lg">"{selectedItem.concept.voiceoverScript}"</p>
+                          <div className="pt-4">
+                            <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Visual Style</h4>
+                            <p className="text-slate-400 text-sm leading-relaxed">{selectedItem.concept.visualPrompt}</p>
+                          </div>
+                       </div>
+                       
+                       <div className="space-y-6">
+                          <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Sequence Breakdown</h4>
+                          <div className="space-y-4">
+                            {selectedItem.concept.scenes.map((scene, idx) => (
+                              <div key={idx} className="bg-slate-950/50 border border-slate-800 p-4 rounded-2xl">
+                                <div className="flex justify-between items-start mb-2">
+                                  <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Scene 0{idx+1}</span>
+                                  <span className="text-[10px] font-mono text-slate-600">{scene.duration}</span>
+                                </div>
+                                <p className="text-xs text-slate-400 mb-2">{scene.description}</p>
+                                <div className="text-[10px] font-bold text-white uppercase bg-slate-800 px-2 py-1 rounded inline-block">Overlay: {scene.textOverlay}</div>
+                              </div>
+                            ))}
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+               )}
 
-          {selectedItem && selectedItem.status === 'PENDING' && (
-            <div className="max-w-xl mx-auto py-28 text-center space-y-8 animate-fadeIn">
-              <div className="p-8 bg-indigo-500/5 inline-block rounded-[40px] border border-indigo-500/10 mb-2">
-                <Clock className="w-14 h-14 text-indigo-500 animate-pulse" />
-              </div>
-              <div className="space-y-3">
-                <h3 className="text-4xl font-black text-white tracking-tight">On Hold</h3>
-                <p className="text-slate-500 text-lg font-medium max-w-sm mx-auto">Production is busy with another campaign. Your ad will start in moments.</p>
-              </div>
-            </div>
-          )}
-
-          {selectedItem && selectedItem.status === 'GENERATING' && (
-            <div className="py-16">
-              <LoadingScreen />
-            </div>
-          )}
-
-          {selectedItem && selectedItem.status === 'FAILED' && (
-            <div className="max-w-xl mx-auto py-16 text-center space-y-8 px-8">
-              <div className="bg-red-500/5 border border-red-500/10 p-12 md:p-16 rounded-[48px] shadow-2xl">
-                <AlertCircle className="w-20 h-20 text-red-500 mx-auto mb-8 opacity-80" />
-                <h3 className="text-4xl font-black text-white mb-4 tracking-tighter">Render Halted</h3>
-                <p className="text-slate-500 text-lg font-medium leading-relaxed mb-12">
-                  {selectedItem.error || "The AI studio encountered a capacity issue. Please check your credentials or retry."}
-                </p>
-                <div className="flex flex-col gap-4">
-                  <button 
-                    onClick={() => updateItemStatus(selectedItem.id, 'PENDING')}
-                    className="w-full py-5.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-lg shadow-2xl shadow-indigo-600/40 active:scale-95 transition-all min-h-[64px]"
-                  >
-                    Retry Render
-                  </button>
-                  <button 
-                    onClick={(e) => { e.preventDefault(); handleSelectKey(); }}
-                    className="w-full py-4.5 bg-slate-900 border border-slate-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 cursor-pointer touch-manipulation min-h-[56px]"
-                  >
-                    Change AI Project Key
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {selectedItem && selectedItem.status === 'COMPLETED' && selectedItem.result && (
-            <div className="animate-fadeIn px-2 md:px-0">
-              <div className="text-center mb-12 space-y-3">
-                 <h2 className="text-5xl md:text-7xl font-black text-white tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-800">
-                    Production Suite
-                 </h2>
-                 <p className="text-indigo-400 font-black uppercase tracking-[0.6em] text-[9px] opacity-80">Final Mastering & Post-Production</p>
-              </div>
-              <VideoEditor 
-                result={selectedItem.result} 
-                aspectRatio={selectedItem.data.aspectRatio}
-                onUpdate={(newResult) => {
-                   setQueue(prev => prev.map(i => i.id === selectedItem.id ? { ...i, result: newResult } : i));
-                }}
-              />
+               {/* Video Result or Status */}
+               {selectedItem.status === 'COMPLETED' && selectedItem.result ? (
+                 <VideoEditor 
+                    result={selectedItem.result} 
+                    aspectRatio={selectedItem.data.aspectRatio}
+                    onUpdate={(newResult) => setQueue(prev => prev.map(i => i.id === selectedItem.id ? { ...i, result: newResult } : i))}
+                 />
+               ) : selectedItem.status === 'QUOTA_WAIT' ? (
+                 <div className="max-w-2xl mx-auto py-20 text-center space-y-8 px-8">
+                    <div className="bg-amber-500/5 border border-amber-500/10 p-12 rounded-[48px] shadow-2xl animate-pulse">
+                      <RefreshCw className="w-16 h-16 text-amber-500 mx-auto mb-6 animate-spin-slow" />
+                      <h3 className="text-3xl font-black text-white mb-2">Quota Limit Reached</h3>
+                      <p className="text-slate-500 text-lg font-medium">The AI is currently cooling down. We've saved your Blueprint above and will automatically render the video once the quota window reopens.</p>
+                    </div>
+                 </div>
+               ) : (selectedItem.status === 'INITIATING' || selectedItem.status === 'POLLING') ? (
+                 <LoadingScreen progress={selectedItem.status === 'POLLING' ? 'AI is busy building your sequence...' : 'Analyzing product and writing script...'} />
+               ) : selectedItem.status === 'FAILED' ? (
+                 <div className="max-w-xl mx-auto py-16 text-center">
+                    <AlertCircle className="w-20 h-20 text-red-500 mx-auto mb-8" />
+                    <h3 className="text-4xl font-black text-white mb-4">Render Halted</h3>
+                    <p className="text-slate-500 mb-12">{selectedItem.error}</p>
+                    <button onPointerDown={() => updateItemStatus(selectedItem.id, 'PENDING')} className="px-12 py-5 bg-indigo-600 text-white rounded-[32px] font-black uppercase">Retry Render</button>
+                 </div>
+               ) : null}
             </div>
           )}
         </div>
       </main>
 
-      <footer className="py-16 border-t border-slate-900/30 text-center space-y-6">
-        <div className="flex items-center justify-center gap-4 text-slate-800">
-          <div className="w-12 h-px bg-slate-900"></div>
-          <p className="uppercase tracking-[0.5em] font-black text-[10px]">AI-Powered Marketing</p>
-          <div className="w-12 h-px bg-slate-900"></div>
-        </div>
-        <p className="text-slate-600 text-[10px] font-bold">&copy; {new Date().getFullYear()} AdGenius AI Studio. Powered by Google Veo & Gemini 2.5.</p>
+      <footer className="py-16 border-t border-slate-900/30 text-center relative z-10 text-slate-600 text-[10px] font-bold uppercase tracking-[0.2em]">
+        AdGenius AI Studio
       </footer>
     </div>
   );

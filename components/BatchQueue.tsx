@@ -1,6 +1,7 @@
+
 import React from 'react';
 import { BatchItem } from '../types';
-import { Loader2, CheckCircle2, AlertCircle, Play, Trash2 } from 'lucide-react';
+import { Loader2, CheckCircle2, AlertCircle, Play, Trash2, Clock } from 'lucide-react';
 
 interface BatchQueueProps {
   items: BatchItem[];
@@ -19,7 +20,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({ items, onRemove, onSelec
         {items.map((item) => (
           <div 
             key={item.id} 
-            className={`flex items-center transition-all ${processingId === item.id ? 'bg-indigo-500/5' : 'hover:bg-slate-900/40'}`}
+            className={`flex items-center transition-all ${item.status === 'INITIATING' || item.status === 'POLLING' ? 'bg-indigo-500/5' : 'hover:bg-slate-900/40'}`}
           >
             <button 
               className="flex items-center gap-4 p-4 md:p-5 flex-grow text-left active:bg-slate-900/60 transition-colors focus:outline-none"
@@ -35,8 +36,13 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({ items, onRemove, onSelec
               <div className="flex-grow">
                 <h4 className="font-bold text-white text-sm md:text-base line-clamp-1">{item.data.name}</h4>
                 <div className="flex items-center gap-2 mt-1">
-                  {item.status === 'PENDING' && <span className="text-slate-600 text-[10px] font-bold uppercase tracking-wider">In Queue</span>}
-                  {item.status === 'GENERATING' && (
+                  {item.status === 'PENDING' && <span className="text-slate-600 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5"><Clock size={10}/> In Queue</span>}
+                  {item.status === 'INITIATING' && (
+                    <span className="text-blue-400 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
+                      <Loader2 size={12} className="animate-spin"/> Researching
+                    </span>
+                  )}
+                  {item.status === 'POLLING' && (
                     <span className="text-indigo-400 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
                       <Loader2 size={12} className="animate-spin"/> Rendering
                     </span>
@@ -67,7 +73,7 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({ items, onRemove, onSelec
               )}
               <button 
                 onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
-                disabled={item.status === 'GENERATING'}
+                disabled={item.status === 'INITIATING' || item.status === 'POLLING'}
                 className="p-3.5 text-slate-700 hover:text-red-500 hover:bg-red-500/10 rounded-2xl disabled:opacity-20 transition-all active:scale-90"
                 aria-label="Remove"
               >

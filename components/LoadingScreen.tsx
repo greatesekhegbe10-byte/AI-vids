@@ -1,21 +1,26 @@
+
 import React, { useEffect, useState } from 'react';
 import { Loader2, Wand2, Globe } from 'lucide-react';
 
-export const LoadingScreen: React.FC = () => {
+interface LoadingScreenProps {
+  progress?: string;
+}
+
+export const LoadingScreen: React.FC<LoadingScreenProps> = ({ progress }) => {
   const [stage, setStage] = useState(0);
   
   const stages = [
     "Researching product details on the web...",
     "Generating creative direction...",
     "Writing & recording voiceover...",
-    "Rendering cinematic video...",
-    "Applying final polish..."
+    "Initiating video production...",
+    "AI is busy building your sequence..."
   ];
 
   useEffect(() => {
     const interval = setInterval(() => {
       setStage((prev) => (prev + 1) % stages.length);
-    }, 4000); // Change text every 4 seconds
+    }, 4000); 
     return () => clearInterval(interval);
   }, [stages.length]);
 
@@ -37,7 +42,7 @@ export const LoadingScreen: React.FC = () => {
       
       <h3 className="text-2xl font-bold text-white mb-2">Creating Magic</h3>
       <p className="text-indigo-300 font-medium text-lg mb-8 min-h-[28px] transition-all duration-500 ease-in-out">
-        {stages[stage]}
+        {progress || stages[stage]}
       </p>
       
       <div className="w-full max-w-md bg-slate-800 rounded-full h-1.5 overflow-hidden">
@@ -45,7 +50,7 @@ export const LoadingScreen: React.FC = () => {
       </div>
       
       <p className="text-slate-500 text-xs mt-6 max-w-xs">
-        Using Google Search, Gemini Veo & TTS for enhanced accuracy.
+        Async production system active. Mobile timeout protection enabled.
       </p>
     </div>
   );

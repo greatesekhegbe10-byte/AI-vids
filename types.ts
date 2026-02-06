@@ -8,12 +8,20 @@ export enum AppState {
 
 export type VoiceName = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
 
+export interface CreativeConcept {
+  visualPrompt: string;
+  slogan: string;
+  voiceoverScript: string;
+  scenes: { description: string; duration: string; textOverlay: string }[];
+}
+
 export interface ProductData {
-  id: string; // Unique ID for batching
+  id: string;
   name: string;
   websiteUrl: string;
   description: string;
-  targetAudience: string; // New field
+  targetAudience: string; 
+  slogan: string;
   images: File[];
   aspectRatio: '16:9' | '9:16';
   voice: VoiceName;
@@ -24,14 +32,17 @@ export interface ProductData {
 export interface GeneratedResult {
   videoUrl: string;
   audioUrl: string | null;
-  videoOperation?: any; // To allow extension
+  videoOperation?: any; 
+  concept?: CreativeConcept;
 }
 
 export interface BatchItem {
   id: string;
   data: ProductData;
-  status: 'PENDING' | 'GENERATING' | 'COMPLETED' | 'FAILED';
+  status: 'PENDING' | 'INITIATING' | 'QUOTA_WAIT' | 'POLLING' | 'COMPLETED' | 'FAILED';
   result?: GeneratedResult;
+  concept?: CreativeConcept; // Textual plan available early
   error?: string;
   progress?: string;
+  operationName?: string;
 }
