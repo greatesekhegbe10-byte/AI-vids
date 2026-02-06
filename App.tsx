@@ -12,12 +12,13 @@ import { AlertCircle, Key, Clock, ExternalLink, ShieldCheck } from 'lucide-react
 const App: React.FC = () => {
   const [queue, setQueue] = useState<BatchItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [apiKeyReady, setApiKeyReady] = useState<boolean>(false);
+  const [apiKeyReady, setApiKeyReady] = useState<boolean>(true); // Default to true if env key exists
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   useEffect(() => {
     checkApiKey();
-    const interval = setInterval(checkApiKey, 3000);
+    // Periodically check for key status updates
+    const interval = setInterval(checkApiKey, 5000);
     return () => clearInterval(interval);
   }, []);
 
@@ -52,7 +53,7 @@ const App: React.FC = () => {
         const errorMessage = error.message || "Unknown Studio Error";
         
         if (errorMessage.includes("entity was not found")) {
-          setApiKeyReady(false);
+          // If we hit an error specifically about the key not existing in the backend project
           updateItemStatus(nextItem.id, 'FAILED', "Invalid Project Key. Please re-select a paid project.");
           handleSelectKey();
         } else {
@@ -72,11 +73,15 @@ const App: React.FC = () => {
 
   const checkApiKey = async () => {
     const aistudio = (window as any).aistudio;
+    // Fallback logic: if env key is present, we are "ready", but we check if user has explicitly selected one
+    const hasEnvKey = !!process.env.API_KEY && process.env.API_KEY !== "";
+    
     if (aistudio && aistudio.hasSelectedApiKey) {
-      const hasKey = await aistudio.hasSelectedApiKey();
-      setApiKeyReady(hasKey);
+      const hasSelected = await aistudio.hasSelectedApiKey();
+      // App is ready if either a key is selected OR the environment has a default one
+      setApiKeyReady(hasSelected || hasEnvKey);
     } else {
-      setApiKeyReady(!!process.env.API_KEY); 
+      setApiKeyReady(hasEnvKey);
     }
   };
 
@@ -85,6 +90,7 @@ const App: React.FC = () => {
     if (aistudio && aistudio.openSelectKey) {
       try {
         await aistudio.openSelectKey();
+        // Assume readiness to avoid blocking the UI
         setApiKeyReady(true);
       } catch (e) {
         console.error("Studio Setup Error:", e);
@@ -108,30 +114,30 @@ const App: React.FC = () => {
 
   const selectedItem = queue.find(i => i.id === selectedItemId);
 
-  if (!apiKeyReady) {
+  // Only block with gateway if we have NO key at all
+  if (!apiKeyReady && (!process.env.API_KEY || process.env.API_KEY === "")) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8 relative overflow-hidden selection:bg-indigo-500/30">
-        <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-indigo-600/10 blur-[150px] rounded-full animate-pulse"></div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8 relative overflow-hidden">
+        <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-indigo-600/10 blur-[150px] rounded-full"></div>
         <div className="absolute bottom-[-15%] left-[-10%] w-[60%] h-[60%] bg-purple-600/10 blur-[150px] rounded-full"></div>
 
-        <div className="max-w-md w-full text-center space-y-12 animate-fadeIn relative z-[50] pointer-events-auto">
+        <div className="max-w-md w-full text-center space-y-12 animate-fadeIn relative z-[60] pointer-events-auto">
           <div className="space-y-6">
-             <div className="bg-slate-900 border border-slate-700/50 p-10 rounded-[48px] shadow-2xl inline-block relative group">
-                <div className="absolute inset-0 bg-indigo-500/5 rounded-[48px] animate-ping scale-75 opacity-20"></div>
-                <Key className="w-20 h-20 text-indigo-400 mx-auto relative z-10" />
+             <div className="bg-slate-900 border border-slate-700/50 p-10 rounded-[48px] shadow-2xl inline-block">
+                <Key className="w-20 h-20 text-indigo-400 mx-auto" />
              </div>
              <div className="space-y-3">
                <h1 className="text-5xl font-black text-white tracking-tight pt-4">AdGenius</h1>
                <p className="text-slate-500 text-lg font-medium leading-relaxed max-w-xs mx-auto">
-                 The world's first autonomous AI video advertising studio.
+                 Setup your studio key to begin generating professional AI commercials.
                </p>
              </div>
           </div>
 
           <div className="space-y-4">
             <button 
-              onClick={(e) => { e.preventDefault(); handleSelectKey(); }} 
-              className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-xl shadow-2xl shadow-indigo-600/40 transition-all active:scale-95 flex items-center justify-center gap-4 border border-indigo-400/20 pointer-events-auto touch-manipulation cursor-pointer relative z-[60]"
+              onClick={handleSelectKey} 
+              className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-xl shadow-2xl shadow-indigo-600/40 transition-all active:scale-95 flex items-center justify-center gap-4 border border-indigo-400/20 cursor-pointer pointer-events-auto touch-manipulation"
             >
               <Key size={24} />
               Setup Studio Key
@@ -233,7 +239,7 @@ const App: React.FC = () => {
                   </button>
                   <button 
                     onClick={handleSelectKey}
-                    className="w-full py-4.5 bg-slate-900 border border-slate-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95"
+                    className="w-full py-4.5 bg-slate-900 border border-slate-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 cursor-pointer"
                   >
                     Change AI Project Key
                   </button>

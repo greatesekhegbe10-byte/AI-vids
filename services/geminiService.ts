@@ -46,12 +46,10 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 10, delay = 5000): P
 /**
  * Generates an image using gemini-2.5-flash-image if the user didn't provide one.
  */
-// Fix: Updated return type to include imageBytes instead of data for compatibility with generateVideos (Error line 263 fix)
 const generatePlaceholderImage = async (name: string, description: string, targetAudience: string, aspectRatio: '16:9' | '9:16'): Promise<{imageBytes: string, mimeType: string}> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
   const prompt = `Professional product photography of ${name}. ${description}. Targeted at ${targetAudience}. Clean studio background, cinematic lighting, 8k resolution, commercial aesthetic.`;
   
-  // Fix: Added explicit cast to GenerateContentResponse to fix 'unknown' type error (Error line 63 fix)
   const response = await withRetry(() => ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
     contents: [{ parts: [{ text: prompt }] }],
@@ -139,7 +137,7 @@ const enhancePromptWithSearch = async (
   };
 
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
     
     const prompt = `Task: Commercial Direction Specialist.
       Product: "${name}" ${url ? `(Website: ${url})` : ''}
@@ -186,7 +184,7 @@ const enhancePromptWithSearch = async (
 
 const generateVoiceover = async (script: string, voiceName: VoiceName): Promise<string | null> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
     const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: script }] }],
@@ -213,7 +211,7 @@ export const extendVideo = async (
   prompt: string, 
   aspectRatio: '16:9' | '9:16'
 ): Promise<GeneratedResult> => {
-  const apiKey = process.env.API_KEY;
+  const apiKey = process.env.API_KEY || "";
   const ai = new GoogleGenAI({ apiKey });
 
   let operation: any = await withRetry(() => ai.models.generateVideos({
@@ -254,8 +252,8 @@ export const generateVideoAd = async (
   outroText?: string,
   targetAudience: string = "general public"
 ): Promise<GeneratedResult> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("Please select an API key to begin.");
+  const apiKey = process.env.API_KEY || "";
+  if (!apiKey) throw new Error("API Key missing. Please configure your key in settings.");
 
   let imagePart: { imageBytes: string, mimeType: string };
   
@@ -263,7 +261,6 @@ export const generateVideoAd = async (
     const base64 = await fileToBase64(images[0]);
     imagePart = { imageBytes: base64, mimeType: images[0].type };
   } else {
-    // Fix: generatePlaceholderImage now returns an object with imageBytes property
     imagePart = await generatePlaceholderImage(name, description, targetAudience, aspectRatio);
   }
 
@@ -271,7 +268,7 @@ export const generateVideoAd = async (
     name, websiteUrl, description, targetAudience, introText, outroText
   );
 
-  const finalPrompt = `${creative.visualPrompt} The visual style should explicitly appeal to ${targetAudience}. Use consistent lighting based on the brand identity of ${name}.`;
+  const finalPrompt = `${creative.visualPrompt} The visual style should explicitly appeal to ${targetAudience}. Use consistent lighting based on the brand identity of ${name}. High production value, commercial style.`;
 
   const videoTask = (async () => {
     const ai = new GoogleGenAI({ apiKey });

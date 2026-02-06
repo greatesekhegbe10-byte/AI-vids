@@ -25,15 +25,12 @@ export const Header: React.FC<HeaderProps> = ({ onSelectKey, apiKeyReady }) => {
       
       <div className="flex items-center gap-4 pointer-events-auto">
         <button 
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onSelectKey();
-          }}
-          className={`flex items-center gap-3 px-6 py-3.5 md:px-6 md:py-3 rounded-2xl md:rounded-[20px] text-[10px] md:text-xs font-black uppercase tracking-widest transition-all border active:scale-90 touch-manipulation pointer-events-auto relative z-[110] cursor-pointer ${
+          onClick={onSelectKey}
+          type="button"
+          className={`flex items-center gap-3 px-6 py-4 md:px-6 md:py-3 rounded-2xl md:rounded-[20px] text-[10px] md:text-xs font-black uppercase tracking-widest transition-all border active:scale-90 touch-manipulation pointer-events-auto relative z-[110] cursor-pointer ${
             apiKeyReady 
-              ? 'bg-slate-900/60 border-slate-800 text-indigo-400 hover:text-white hover:border-indigo-500' 
-              : 'bg-indigo-600 border-indigo-400 text-white shadow-2xl shadow-indigo-500/40 animate-pulse'
+              ? 'bg-slate-900/60 border-slate-800 text-indigo-400' 
+              : 'bg-indigo-600 border-indigo-400 text-white shadow-2xl shadow-indigo-500/40'
           }`}
         >
           <Key size={16} />
