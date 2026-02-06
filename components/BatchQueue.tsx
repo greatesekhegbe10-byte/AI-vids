@@ -13,45 +13,65 @@ export const BatchQueue: React.FC<BatchQueueProps> = ({ items, onRemove, onSelec
   if (items.length === 0) return null;
 
   return (
-    <div className="w-full max-w-xl mx-auto mt-8">
-      <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3 px-1">Processing Queue</h3>
-      <div className="bg-slate-800/50 border border-slate-700 rounded-2xl overflow-hidden divide-y divide-slate-700/50">
+    <div className="w-full max-w-xl mx-auto mt-6">
+      <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.2em] mb-4 px-2">Batch Processing</h3>
+      <div className="bg-slate-950/40 border border-slate-800 rounded-3xl overflow-hidden divide-y divide-slate-800/40 shadow-inner">
         {items.map((item) => (
           <div 
             key={item.id} 
-            className={`p-4 flex items-center justify-between transition-colors ${processingId === item.id ? 'bg-indigo-500/10' : 'hover:bg-slate-800'}`}
+            className={`flex items-center transition-all ${processingId === item.id ? 'bg-indigo-500/5' : 'hover:bg-slate-900/40'}`}
           >
-            <div className="flex items-center gap-4 cursor-pointer flex-grow" onClick={() => item.status === 'COMPLETED' && onSelect(item)}>
-              <div className="w-12 h-12 bg-slate-900 rounded-lg overflow-hidden border border-slate-700 flex-shrink-0">
+            <button 
+              className="flex items-center gap-4 p-4 md:p-5 flex-grow text-left active:bg-slate-900/60 transition-colors focus:outline-none"
+              onClick={() => onSelect(item)}
+            >
+              <div className="w-16 h-16 bg-black rounded-2xl overflow-hidden border border-slate-800 flex-shrink-0 shadow-lg">
                 {item.data.images[0] ? (
-                  <img src={URL.createObjectURL(item.data.images[0])} className="w-full h-full object-cover" />
+                  <img src={URL.createObjectURL(item.data.images[0])} className="w-full h-full object-cover" alt="Thumb" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-xs text-slate-600">AI Gen</div>
+                  <div className="w-full h-full flex items-center justify-center text-[10px] text-slate-800 font-black">AI</div>
                 )}
               </div>
-              <div>
-                <h4 className="font-medium text-white">{item.data.name}</h4>
-                <div className="flex items-center gap-2 text-xs">
-                  {item.status === 'PENDING' && <span className="text-slate-500">Waiting...</span>}
-                  {item.status === 'GENERATING' && <span className="text-indigo-400 flex items-center gap-1"><Loader2 size={10} className="animate-spin"/> Generating</span>}
-                  {item.status === 'COMPLETED' && <span className="text-green-400 flex items-center gap-1"><CheckCircle2 size={10}/> Ready</span>}
-                  {item.status === 'FAILED' && <span className="text-red-400 flex items-center gap-1"><AlertCircle size={10}/> Failed</span>}
+              <div className="flex-grow">
+                <h4 className="font-bold text-white text-sm md:text-base line-clamp-1">{item.data.name}</h4>
+                <div className="flex items-center gap-2 mt-1">
+                  {item.status === 'PENDING' && <span className="text-slate-600 text-[10px] font-bold uppercase tracking-wider">In Queue</span>}
+                  {item.status === 'GENERATING' && (
+                    <span className="text-indigo-400 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 animate-pulse">
+                      <Loader2 size={12} className="animate-spin"/> Rendering
+                    </span>
+                  )}
+                  {item.status === 'COMPLETED' && (
+                    <span className="text-green-500 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                      <CheckCircle2 size={12}/> Studio Ready
+                    </span>
+                  )}
+                  {item.status === 'FAILED' && (
+                    <span className="text-red-500 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5">
+                      <AlertCircle size={12}/> Error
+                    </span>
+                  )}
                 </div>
               </div>
-            </div>
+            </button>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center pr-4 md:pr-6 gap-2">
               {item.status === 'COMPLETED' && (
-                <button onClick={() => onSelect(item)} className="p-2 text-indigo-400 hover:text-white hover:bg-indigo-600 rounded-full transition-all">
-                  <Play size={16} fill="currentColor" />
+                <button 
+                  onClick={() => onSelect(item)} 
+                  className="p-3.5 text-indigo-400 hover:text-white hover:bg-indigo-600 rounded-2xl transition-all active:scale-90"
+                  aria-label="Play"
+                >
+                  <Play size={20} fill="currentColor" />
                 </button>
               )}
               <button 
-                onClick={() => onRemove(item.id)}
+                onClick={(e) => { e.stopPropagation(); onRemove(item.id); }}
                 disabled={item.status === 'GENERATING'}
-                className="p-2 text-slate-500 hover:text-red-400 hover:bg-slate-700/50 rounded-lg disabled:opacity-30"
+                className="p-3.5 text-slate-700 hover:text-red-500 hover:bg-red-500/10 rounded-2xl disabled:opacity-20 transition-all active:scale-90"
+                aria-label="Remove"
               >
-                <Trash2 size={16} />
+                <Trash2 size={20} />
               </button>
             </div>
           </div>

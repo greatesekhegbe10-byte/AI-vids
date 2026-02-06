@@ -8,35 +8,31 @@ interface HeaderProps {
 
 export const Header: React.FC<HeaderProps> = ({ onSelectKey, apiKeyReady }) => {
   return (
-    <header className="w-full py-6 px-8 flex items-center justify-between border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
+    <header className="w-full py-4 px-4 md:py-6 md:px-8 flex items-center justify-between border-b border-slate-800 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50">
       <div className="flex items-center gap-3">
-        <div className="p-2 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg shadow-lg shadow-indigo-500/20">
-          <Video className="w-6 h-6 text-white" />
+        <div className="p-2.5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl shadow-lg shadow-indigo-500/20">
+          <Video className="w-5 h-5 md:w-6 md:h-6 text-white" />
         </div>
         <div>
-          <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
+          <h1 className="text-xl md:text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-500">
             AdGenius
           </h1>
-          <p className="text-xs text-slate-500 font-medium tracking-wide">AI VIDEO COMMERCIALS</p>
+          <p className="hidden md:block text-[10px] text-slate-600 font-bold tracking-[0.3em] uppercase">AI Video</p>
         </div>
       </div>
       
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 md:gap-4">
         <button 
           onClick={onSelectKey}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+          className={`flex items-center gap-2 px-5 py-3 md:px-4 md:py-2 rounded-2xl md:rounded-xl text-[10px] md:text-xs font-black uppercase tracking-wider transition-all border active:scale-95 ${
             apiKeyReady 
-              ? 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700' 
-              : 'bg-indigo-600 border-indigo-500 text-white animate-pulse'
+              ? 'bg-slate-800/50 border-slate-700 text-slate-300' 
+              : 'bg-indigo-600 border-indigo-500 text-white shadow-xl shadow-indigo-500/20'
           }`}
         >
           <Key size={14} />
-          {apiKeyReady ? 'Change API Key' : 'Select API Key'}
+          <span className="whitespace-nowrap">{apiKeyReady ? 'API Ready' : 'Select Key'}</span>
         </button>
-        <div className="hidden md:block h-4 w-px bg-slate-800"></div>
-        <div className="hidden md:flex items-center gap-4 text-sm text-slate-400">
-          <span>Powered by Gemini Veo</span>
-        </div>
       </div>
     </header>
   );
