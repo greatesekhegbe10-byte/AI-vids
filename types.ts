@@ -1,3 +1,4 @@
+
 export enum AppState {
   IDLE = 'IDLE',
   PROCESSING = 'PROCESSING',
@@ -12,6 +13,7 @@ export interface ProductData {
   name: string;
   websiteUrl: string;
   description: string;
+  targetAudience: string; // New field
   images: File[];
   aspectRatio: '16:9' | '9:16';
   voice: VoiceName;

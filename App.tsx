@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { InputForm } from './components/InputForm';
@@ -16,9 +17,11 @@ const App: React.FC = () => {
 
   useEffect(() => {
     checkApiKey();
+    // Periodically check if API key selection state changed outside React
+    const interval = setInterval(checkApiKey, 5000);
+    return () => clearInterval(interval);
   }, []);
 
-  // BATCH PROCESSOR
   useEffect(() => {
     const processQueue = async () => {
       const nextItem = queue.find(item => item.status === 'PENDING');
@@ -38,7 +41,8 @@ const App: React.FC = () => {
           nextItem.data.websiteUrl,
           nextItem.data.voice,
           nextItem.data.introText,
-          nextItem.data.outroText
+          nextItem.data.outroText,
+          nextItem.data.targetAudience // Pass the new field
         );
         
         setQueue(prev => prev.map(i => 
@@ -50,7 +54,7 @@ const App: React.FC = () => {
         
         if (errorMessage.includes("Requested entity was not found")) {
           setApiKeyReady(false);
-          updateItemStatus(nextItem.id, 'FAILED', "Invalid API Key. Please select a paid GCP project key.");
+          updateItemStatus(nextItem.id, 'FAILED', "Invalid API Key. Please select a valid project.");
           handleSelectKey();
         } else {
           updateItemStatus(nextItem.id, 'FAILED', errorMessage);
@@ -82,10 +86,10 @@ const App: React.FC = () => {
     if (aistudio && aistudio.openSelectKey) {
       try {
         await aistudio.openSelectKey();
-        // Proceed after dialog as per standard AI Studio flow
+        // Assume success after dialog trigger for better mobile UX
         setApiKeyReady(true);
       } catch (e) {
-        console.error(e);
+        console.error("API Key Dialog Error:", e);
       }
     }
   };
@@ -106,47 +110,46 @@ const App: React.FC = () => {
 
   const selectedItem = queue.find(i => i.id === selectedItemId);
 
-  // If no API key is set, show a full-screen mobile-ready gateway
   if (!apiKeyReady) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6">
-        <div className="max-w-md w-full text-center space-y-8 animate-fadeIn">
-          <div className="relative inline-block">
-             <div className="absolute inset-0 bg-indigo-500 blur-3xl opacity-20"></div>
-             <div className="relative bg-slate-900 border border-slate-700 p-6 rounded-3xl shadow-2xl">
-                <Key className="w-12 h-12 text-indigo-400 mx-auto" />
-             </div>
-          </div>
-          
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 relative overflow-hidden">
+        {/* Animated Background Gradients for Mobile Flair */}
+        <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/10 blur-[120px] rounded-full"></div>
+        <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-600/10 blur-[120px] rounded-full"></div>
+
+        <div className="max-w-md w-full text-center space-y-10 animate-fadeIn relative z-10">
           <div className="space-y-4">
-            <h1 className="text-3xl font-black text-white tracking-tight">AdGenius Studio</h1>
-            <p className="text-slate-400 text-lg leading-relaxed">
-              Unlock professional AI video generation by selecting your Gemini API key.
-            </p>
+             <div className="bg-slate-900 border border-slate-700 p-8 rounded-[40px] shadow-2xl inline-block">
+                <Key className="w-16 h-16 text-indigo-400 mx-auto" />
+             </div>
+             <h1 className="text-4xl font-black text-white tracking-tight pt-4">AdGenius</h1>
+             <p className="text-slate-400 text-lg leading-relaxed max-w-xs mx-auto">
+               Set your API key to start generating professional AI commercials.
+             </p>
           </div>
 
-          <div className="space-y-4 pt-4">
+          <div className="space-y-4">
             <button 
               onClick={handleSelectKey} 
-              className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold text-lg shadow-2xl shadow-indigo-600/30 transition-all active:scale-95 flex items-center justify-center gap-3"
+              className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-3xl font-black text-xl shadow-2xl shadow-indigo-600/40 transition-all active:scale-95 flex items-center justify-center gap-4 border border-indigo-400/20"
             >
-              <Key size={20} />
-              Set Up API Key
+              <Key size={24} />
+              Set API Key
             </button>
             <a 
               href="https://ai.google.dev/gemini-api/docs/billing" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-full py-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-semibold flex items-center justify-center gap-2 active:scale-95 transition-all"
+              className="w-full py-4 bg-slate-900/50 hover:bg-slate-800 text-slate-400 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all border border-slate-800"
             >
-              Billing Requirements
-              <ExternalLink size={16} />
+              View Billing Setup
+              <ExternalLink size={14} />
             </a>
           </div>
           
-          <div className="pt-8 flex items-center justify-center gap-2 text-slate-600">
+          <div className="flex items-center justify-center gap-3 text-slate-700 font-bold uppercase tracking-widest text-[10px]">
             <ShieldCheck size={14} />
-            <span className="text-xs uppercase tracking-widest font-bold">Secure AI Processing</span>
+            Secure Studio Access
           </div>
         </div>
       </div>
@@ -158,18 +161,19 @@ const App: React.FC = () => {
       <Header onSelectKey={handleSelectKey} apiKeyReady={apiKeyReady} />
 
       <main className="flex-grow container mx-auto px-4 py-8 md:py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-12 items-start">
           <InputForm onSubmit={handleAddToQueue} isProcessing={!!processingId} />
           
-          <div className="space-y-6">
-            <div className="bg-slate-900/30 p-6 rounded-3xl border border-slate-800 h-full min-h-[400px]">
-               <h2 className="text-xl font-bold mb-4 text-white px-2">Production Queue</h2>
+          <div className="space-y-8">
+            <div className="bg-slate-900/40 p-6 md:p-8 rounded-[40px] border border-slate-800/60 shadow-inner h-full min-h-[450px]">
+               <h2 className="text-xl md:text-2xl font-black mb-6 text-white px-2">Work Queue</h2>
                {queue.length === 0 ? (
-                 <div className="h-64 flex flex-col items-center justify-center text-slate-600 text-center px-6">
-                   <div className="p-4 bg-slate-900 rounded-full mb-3 opacity-20">
-                     <AlertCircle size={32} />
+                 <div className="h-64 flex flex-col items-center justify-center text-slate-700 text-center px-10">
+                   <div className="p-6 bg-slate-950 rounded-full mb-6 opacity-40 border border-slate-800 shadow-xl">
+                     <AlertCircle size={40} />
                    </div>
-                   <p className="text-sm">Queue is empty. Add product details to begin.</p>
+                   <p className="text-sm font-bold uppercase tracking-widest">Studio is ready</p>
+                   <p className="text-xs mt-2 opacity-60">Complete the form to start production.</p>
                  </div>
                ) : (
                  <BatchQueue 
@@ -183,20 +187,20 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="pt-8 border-t border-slate-900 min-h-[500px]">
+        <div className="pt-10 border-t border-slate-900/50">
           {!selectedItem && queue.length > 0 && (
-            <div className="py-20 text-center text-slate-500">
-              <p>Select a queued project to view progress or edit.</p>
+            <div className="py-24 text-center">
+              <p className="text-slate-600 font-bold uppercase tracking-[0.3em] text-xs">Select a Project Above</p>
             </div>
           )}
 
           {selectedItem && selectedItem.status === 'PENDING' && (
-            <div className="max-w-xl mx-auto py-20 text-center space-y-4">
-              <div className="p-5 bg-indigo-500/10 inline-block rounded-full mb-2">
-                <Clock className="w-10 h-10 text-indigo-400 animate-pulse" />
+            <div className="max-w-xl mx-auto py-24 text-center space-y-6">
+              <div className="p-6 bg-indigo-500/5 inline-block rounded-[32px] border border-indigo-500/10 mb-2">
+                <Clock className="w-12 h-12 text-indigo-400 animate-pulse" />
               </div>
-              <h3 className="text-2xl font-bold text-white">Scheduled for Generation</h3>
-              <p className="text-slate-400">Your ad is in line. Production starts as soon as the current project finishes.</p>
+              <h3 className="text-3xl font-black text-white">Scheduled</h3>
+              <p className="text-slate-400 text-lg leading-relaxed max-w-sm mx-auto">Rendering queue active. Your ad will start production automatically.</p>
             </div>
           )}
 
@@ -207,28 +211,26 @@ const App: React.FC = () => {
           )}
 
           {selectedItem && selectedItem.status === 'FAILED' && (
-            <div className="max-w-xl mx-auto py-12 text-center space-y-4 px-4">
-              <div className="bg-red-500/10 border border-red-500/30 p-8 md:p-12 rounded-3xl">
-                <AlertCircle className="w-14 h-14 text-red-400 mx-auto mb-6" />
-                <h3 className="text-2xl font-bold text-white mb-2">Generation Failed</h3>
-                <p className="text-slate-400 mb-8 leading-relaxed">
-                  {selectedItem.error || "A connection error occurred. This often happens when the AI servers are at peak load."}
+            <div className="max-w-xl mx-auto py-12 text-center space-y-6 px-6">
+              <div className="bg-red-500/5 border border-red-500/20 p-10 md:p-14 rounded-[40px] shadow-2xl">
+                <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-8" />
+                <h3 className="text-3xl font-black text-white mb-4 tracking-tight">Render Error</h3>
+                <p className="text-slate-400 text-lg leading-relaxed mb-10">
+                  {selectedItem.error || "Generation interrupted. Check your API project status or try again."}
                 </p>
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <div className="flex flex-col gap-4">
                   <button 
                     onClick={() => updateItemStatus(selectedItem.id, 'PENDING')}
-                    className="w-full sm:w-auto px-10 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold transition-all active:scale-95 shadow-xl shadow-indigo-600/20"
+                    className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-3xl font-black text-lg transition-all active:scale-95 shadow-2xl shadow-indigo-600/30"
                   >
-                    Retry Project
+                    Retry Render
                   </button>
-                  {selectedItem.error?.includes("entity was not found") && (
-                    <button 
-                      onClick={handleSelectKey}
-                      className="w-full sm:w-auto px-10 py-4 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-2xl font-bold transition-all border border-slate-700 active:scale-95"
-                    >
-                      New API Key
-                    </button>
-                  )}
+                  <button 
+                    onClick={handleSelectKey}
+                    className="w-full py-4 bg-slate-900 border border-slate-800 text-slate-300 rounded-2xl font-bold active:scale-95"
+                  >
+                    Change API Key
+                  </button>
                 </div>
               </div>
             </div>
@@ -236,9 +238,12 @@ const App: React.FC = () => {
 
           {selectedItem && selectedItem.status === 'COMPLETED' && selectedItem.result && (
             <div className="animate-fadeIn px-2 md:px-0">
-              <h2 className="text-3xl md:text-4xl font-black text-white mb-8 text-center bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-500">
-                Studio View
-              </h2>
+              <div className="text-center mb-10 space-y-2">
+                 <h2 className="text-4xl md:text-5xl font-black text-white tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-600">
+                    Creative Studio
+                 </h2>
+                 <p className="text-indigo-400 font-black uppercase tracking-[0.4em] text-[10px]">Production Approved</p>
+              </div>
               <VideoEditor 
                 result={selectedItem.result} 
                 aspectRatio={selectedItem.data.aspectRatio}
@@ -251,9 +256,9 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      <footer className="py-10 border-t border-slate-900 text-center text-slate-600 text-[10px] md:text-xs">
-        <p className="uppercase tracking-[0.2em] mb-2 font-bold opacity-60">Professional Video Production Suite</p>
-        <p>&copy; {new Date().getFullYear()} AdGenius AI. Powered by Google Veo Technology.</p>
+      <footer className="py-12 border-t border-slate-900/40 text-center space-y-4">
+        <p className="uppercase tracking-[0.4em] font-black text-slate-700 text-[10px]">AI-Native Commercial Studio</p>
+        <p className="text-slate-600 text-xs">&copy; {new Date().getFullYear()} AdGenius AI. Powered by Veo & Gemini.</p>
       </footer>
     </div>
   );
