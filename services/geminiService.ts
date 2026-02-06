@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, Modality, VideoGenerationReferenceType, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, Type, Modality, GenerateContentResponse } from "@google/genai";
 import { GeneratedResult, VoiceName } from "../types";
 
 // Helper to convert File to Base64
@@ -35,13 +35,45 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 10, delay = 5000): P
       errorStr.includes('internal error');
 
     if (retries > 0 && isRetryable) {
-      console.warn(`Gemini API busy/overloaded. Waiting ${delay}ms before retry ${11-retries}...`);
+      console.warn(`Gemini API busy. Retrying...`);
       await new Promise(resolve => setTimeout(resolve, delay));
       return withRetry(fn, retries - 1, Math.floor(delay * 1.5));
     }
     throw error;
   }
 }
+
+/**
+ * Generates an image using gemini-2.5-flash-image if the user didn't provide one.
+ */
+// Fix: Updated return type to include imageBytes instead of data for compatibility with generateVideos (Error line 263 fix)
+const generatePlaceholderImage = async (name: string, description: string, targetAudience: string, aspectRatio: '16:9' | '9:16'): Promise<{imageBytes: string, mimeType: string}> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const prompt = `Professional product photography of ${name}. ${description}. Targeted at ${targetAudience}. Clean studio background, cinematic lighting, 8k resolution, commercial aesthetic.`;
+  
+  // Fix: Added explicit cast to GenerateContentResponse to fix 'unknown' type error (Error line 63 fix)
+  const response = await withRetry(() => ai.models.generateContent({
+    model: 'gemini-2.5-flash-image',
+    contents: [{ parts: [{ text: prompt }] }],
+    config: {
+      imageConfig: {
+        aspectRatio: aspectRatio === '16:9' ? '16:9' : '9:16'
+      }
+    }
+  })) as GenerateContentResponse;
+
+  if (response.candidates && response.candidates[0]?.content?.parts) {
+    for (const part of response.candidates[0].content.parts) {
+      if (part.inlineData) {
+        return {
+          imageBytes: part.inlineData.data,
+          mimeType: part.inlineData.mimeType
+        };
+      }
+    }
+  }
+  throw new Error("Failed to generate placeholder image.");
+};
 
 /**
  * Generates a WAV URL from raw PCM data.
@@ -107,7 +139,7 @@ const enhancePromptWithSearch = async (
   };
 
   try {
-    const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY || "").trim() });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const prompt = `Task: Commercial Direction Specialist.
       Product: "${name}" ${url ? `(Website: ${url})` : ''}
@@ -115,8 +147,7 @@ const enhancePromptWithSearch = async (
       Target Audience: "${targetAudience}"
       Specifics: Intro(${introText || 'none'}), Outro(${outroText || 'none'})
 
-      Use research to find brand tone. If URL provided, use it. 
-      Tailor the visual style and script specifically to appeal to ${targetAudience}.
+      Research brand tone. Tailor the visual style and script specifically for ${targetAudience}.
       Output strictly JSON:
       - visualPrompt: Detailed cinematic scene description for video generator (Veo).
       - slogan: Catchy 3-5 word slogan for this audience.
@@ -155,7 +186,7 @@ const enhancePromptWithSearch = async (
 
 const generateVoiceover = async (script: string, voiceName: VoiceName): Promise<string | null> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: (process.env.API_KEY || "").trim() });
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const response = await withRetry(() => ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: script }] }],
@@ -182,7 +213,7 @@ export const extendVideo = async (
   prompt: string, 
   aspectRatio: '16:9' | '9:16'
 ): Promise<GeneratedResult> => {
-  const apiKey = (process.env.API_KEY || "").trim();
+  const apiKey = process.env.API_KEY;
   const ai = new GoogleGenAI({ apiKey });
 
   let operation: any = await withRetry(() => ai.models.generateVideos({
@@ -223,17 +254,24 @@ export const generateVideoAd = async (
   outroText?: string,
   targetAudience: string = "general public"
 ): Promise<GeneratedResult> => {
-  const apiKey = (process.env.API_KEY || "").trim();
+  const apiKey = process.env.API_KEY;
   if (!apiKey) throw new Error("Please select an API key to begin.");
 
-  const imageBase64 = await fileToBase64(images[0]);
-  const imagePart = { imageBytes: imageBase64, mimeType: images[0].type };
+  let imagePart: { imageBytes: string, mimeType: string };
+  
+  if (images.length > 0) {
+    const base64 = await fileToBase64(images[0]);
+    imagePart = { imageBytes: base64, mimeType: images[0].type };
+  } else {
+    // Fix: generatePlaceholderImage now returns an object with imageBytes property
+    imagePart = await generatePlaceholderImage(name, description, targetAudience, aspectRatio);
+  }
 
   const creative = await enhancePromptWithSearch(
     name, websiteUrl, description, targetAudience, introText, outroText
   );
 
-  const finalPrompt = `${creative.visualPrompt} Incorporate the brand name "${name}" and the audience theme of "${targetAudience}" into the visual aesthetics.`;
+  const finalPrompt = `${creative.visualPrompt} The visual style should explicitly appeal to ${targetAudience}. Use consistent lighting based on the brand identity of ${name}.`;
 
   const videoTask = (async () => {
     const ai = new GoogleGenAI({ apiKey });
@@ -249,14 +287,14 @@ export const generateVideoAd = async (
     }));
 
     let attempts = 0;
-    while (!operation.done && attempts < 90) {
+    while (!operation.done && attempts < 120) {
       await new Promise(resolve => setTimeout(resolve, 10000));
       const pollAi = new GoogleGenAI({ apiKey });
       operation = await withRetry(() => pollAi.operations.getVideosOperation({ operation: operation }));
       attempts++;
     }
 
-    if (operation.error) throw new Error(operation.error.message || "Video generation failed.");
+    if (operation.error) throw new Error(operation.error.message || "Generation failed.");
     const video = operation.response?.generatedVideos?.[0]?.video;
     return { uri: `${video.uri}&key=${apiKey}`, raw: video };
   })();

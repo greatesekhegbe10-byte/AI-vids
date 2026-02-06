@@ -17,8 +17,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     checkApiKey();
-    // Periodically check if API key selection state changed outside React
-    const interval = setInterval(checkApiKey, 5000);
+    const interval = setInterval(checkApiKey, 3000);
     return () => clearInterval(interval);
   }, []);
 
@@ -42,7 +41,7 @@ const App: React.FC = () => {
           nextItem.data.voice,
           nextItem.data.introText,
           nextItem.data.outroText,
-          nextItem.data.targetAudience // Pass the new field
+          nextItem.data.targetAudience
         );
         
         setQueue(prev => prev.map(i => 
@@ -50,11 +49,11 @@ const App: React.FC = () => {
         ));
       } catch (error: any) {
         console.error(error);
-        const errorMessage = error.message || "";
+        const errorMessage = error.message || "Unknown Studio Error";
         
-        if (errorMessage.includes("Requested entity was not found")) {
+        if (errorMessage.includes("entity was not found")) {
           setApiKeyReady(false);
-          updateItemStatus(nextItem.id, 'FAILED', "Invalid API Key. Please select a valid project.");
+          updateItemStatus(nextItem.id, 'FAILED', "Invalid Project Key. Please re-select a paid project.");
           handleSelectKey();
         } else {
           updateItemStatus(nextItem.id, 'FAILED', errorMessage);
@@ -86,10 +85,9 @@ const App: React.FC = () => {
     if (aistudio && aistudio.openSelectKey) {
       try {
         await aistudio.openSelectKey();
-        // Assume success after dialog trigger for better mobile UX
         setApiKeyReady(true);
       } catch (e) {
-        console.error("API Key Dialog Error:", e);
+        console.error("Studio Setup Error:", e);
       }
     }
   };
@@ -112,44 +110,46 @@ const App: React.FC = () => {
 
   if (!apiKeyReady) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 relative overflow-hidden">
-        {/* Animated Background Gradients for Mobile Flair */}
-        <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-600/10 blur-[120px] rounded-full"></div>
-        <div className="absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-purple-600/10 blur-[120px] rounded-full"></div>
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8 relative overflow-hidden selection:bg-indigo-500/30">
+        <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-indigo-600/10 blur-[150px] rounded-full animate-pulse"></div>
+        <div className="absolute bottom-[-15%] left-[-10%] w-[60%] h-[60%] bg-purple-600/10 blur-[150px] rounded-full"></div>
 
-        <div className="max-w-md w-full text-center space-y-10 animate-fadeIn relative z-10">
-          <div className="space-y-4">
-             <div className="bg-slate-900 border border-slate-700 p-8 rounded-[40px] shadow-2xl inline-block">
-                <Key className="w-16 h-16 text-indigo-400 mx-auto" />
+        <div className="max-w-md w-full text-center space-y-12 animate-fadeIn relative z-[50] pointer-events-auto">
+          <div className="space-y-6">
+             <div className="bg-slate-900 border border-slate-700/50 p-10 rounded-[48px] shadow-2xl inline-block relative group">
+                <div className="absolute inset-0 bg-indigo-500/5 rounded-[48px] animate-ping scale-75 opacity-20"></div>
+                <Key className="w-20 h-20 text-indigo-400 mx-auto relative z-10" />
              </div>
-             <h1 className="text-4xl font-black text-white tracking-tight pt-4">AdGenius</h1>
-             <p className="text-slate-400 text-lg leading-relaxed max-w-xs mx-auto">
-               Set your API key to start generating professional AI commercials.
-             </p>
+             <div className="space-y-3">
+               <h1 className="text-5xl font-black text-white tracking-tight pt-4">AdGenius</h1>
+               <p className="text-slate-500 text-lg font-medium leading-relaxed max-w-xs mx-auto">
+                 The world's first autonomous AI video advertising studio.
+               </p>
+             </div>
           </div>
 
           <div className="space-y-4">
             <button 
-              onClick={handleSelectKey} 
-              className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-3xl font-black text-xl shadow-2xl shadow-indigo-600/40 transition-all active:scale-95 flex items-center justify-center gap-4 border border-indigo-400/20"
+              onClick={(e) => { e.preventDefault(); handleSelectKey(); }} 
+              className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-xl shadow-2xl shadow-indigo-600/40 transition-all active:scale-95 flex items-center justify-center gap-4 border border-indigo-400/20 pointer-events-auto touch-manipulation cursor-pointer relative z-[60]"
             >
               <Key size={24} />
-              Set API Key
+              Setup Studio Key
             </button>
             <a 
               href="https://ai.google.dev/gemini-api/docs/billing" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="w-full py-4 bg-slate-900/50 hover:bg-slate-800 text-slate-400 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all border border-slate-800"
+              className="w-full py-4.5 bg-slate-900/40 hover:bg-slate-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 active:scale-95 transition-all border border-slate-800 shadow-inner"
             >
-              View Billing Setup
+              Learn about Paid Tier Keys
               <ExternalLink size={14} />
             </a>
           </div>
           
-          <div className="flex items-center justify-center gap-3 text-slate-700 font-bold uppercase tracking-widest text-[10px]">
-            <ShieldCheck size={14} />
-            Secure Studio Access
+          <div className="pt-4 flex items-center justify-center gap-3 text-slate-800 font-black uppercase tracking-[0.3em] text-[10px]">
+            <ShieldCheck size={16} />
+            Professional Workspace
           </div>
         </div>
       </div>
@@ -157,23 +157,27 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 overflow-x-hidden">
       <Header onSelectKey={handleSelectKey} apiKeyReady={apiKeyReady} />
 
-      <main className="flex-grow container mx-auto px-4 py-8 md:py-12">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 mb-12 items-start">
+      <main className="flex-grow container mx-auto px-6 py-10 md:py-16">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16 items-start">
           <InputForm onSubmit={handleAddToQueue} isProcessing={!!processingId} />
           
-          <div className="space-y-8">
-            <div className="bg-slate-900/40 p-6 md:p-8 rounded-[40px] border border-slate-800/60 shadow-inner h-full min-h-[450px]">
-               <h2 className="text-xl md:text-2xl font-black mb-6 text-white px-2">Work Queue</h2>
+          <div className="space-y-10">
+            <div className="bg-slate-900/30 p-8 md:p-10 rounded-[48px] border border-slate-800/40 shadow-inner h-full min-h-[500px] flex flex-col">
+               <div className="flex items-center justify-between mb-8 px-2">
+                 <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">Active Queue</h2>
+                 <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-lg shadow-green-500/20"></div>
+               </div>
+               
                {queue.length === 0 ? (
-                 <div className="h-64 flex flex-col items-center justify-center text-slate-700 text-center px-10">
-                   <div className="p-6 bg-slate-950 rounded-full mb-6 opacity-40 border border-slate-800 shadow-xl">
-                     <AlertCircle size={40} />
+                 <div className="flex-grow flex flex-col items-center justify-center text-slate-800 text-center px-12">
+                   <div className="p-8 bg-slate-950 rounded-[40px] mb-8 opacity-40 border border-slate-900 shadow-2xl">
+                     <AlertCircle size={48} />
                    </div>
-                   <p className="text-sm font-bold uppercase tracking-widest">Studio is ready</p>
-                   <p className="text-xs mt-2 opacity-60">Complete the form to start production.</p>
+                   <p className="text-sm font-black uppercase tracking-[0.3em]">No Active Tasks</p>
+                   <p className="text-xs mt-3 opacity-60 font-medium">Ready for your next campaign brief.</p>
                  </div>
                ) : (
                  <BatchQueue 
@@ -187,49 +191,51 @@ const App: React.FC = () => {
           </div>
         </div>
 
-        <div className="pt-10 border-t border-slate-900/50">
+        <div className="pt-12 border-t border-slate-900/30">
           {!selectedItem && queue.length > 0 && (
-            <div className="py-24 text-center">
-              <p className="text-slate-600 font-bold uppercase tracking-[0.3em] text-xs">Select a Project Above</p>
+            <div className="py-28 text-center opacity-30">
+              <p className="text-slate-500 font-black uppercase tracking-[0.5em] text-[10px]">Tap a project above to enter Studio</p>
             </div>
           )}
 
           {selectedItem && selectedItem.status === 'PENDING' && (
-            <div className="max-w-xl mx-auto py-24 text-center space-y-6">
-              <div className="p-6 bg-indigo-500/5 inline-block rounded-[32px] border border-indigo-500/10 mb-2">
-                <Clock className="w-12 h-12 text-indigo-400 animate-pulse" />
+            <div className="max-w-xl mx-auto py-28 text-center space-y-8 animate-fadeIn">
+              <div className="p-8 bg-indigo-500/5 inline-block rounded-[40px] border border-indigo-500/10 mb-2">
+                <Clock className="w-14 h-14 text-indigo-500 animate-pulse" />
               </div>
-              <h3 className="text-3xl font-black text-white">Scheduled</h3>
-              <p className="text-slate-400 text-lg leading-relaxed max-w-sm mx-auto">Rendering queue active. Your ad will start production automatically.</p>
+              <div className="space-y-3">
+                <h3 className="text-4xl font-black text-white tracking-tight">On Hold</h3>
+                <p className="text-slate-500 text-lg font-medium max-w-sm mx-auto">Production is busy with another campaign. Your ad will start in moments.</p>
+              </div>
             </div>
           )}
 
           {selectedItem && selectedItem.status === 'GENERATING' && (
-            <div className="py-12">
+            <div className="py-16">
               <LoadingScreen />
             </div>
           )}
 
           {selectedItem && selectedItem.status === 'FAILED' && (
-            <div className="max-w-xl mx-auto py-12 text-center space-y-6 px-6">
-              <div className="bg-red-500/5 border border-red-500/20 p-10 md:p-14 rounded-[40px] shadow-2xl">
-                <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-8" />
-                <h3 className="text-3xl font-black text-white mb-4 tracking-tight">Render Error</h3>
-                <p className="text-slate-400 text-lg leading-relaxed mb-10">
-                  {selectedItem.error || "Generation interrupted. Check your API project status or try again."}
+            <div className="max-w-xl mx-auto py-16 text-center space-y-8 px-8">
+              <div className="bg-red-500/5 border border-red-500/10 p-12 md:p-16 rounded-[48px] shadow-2xl">
+                <AlertCircle className="w-20 h-20 text-red-500 mx-auto mb-8 opacity-80" />
+                <h3 className="text-4xl font-black text-white mb-4 tracking-tighter">Render Halted</h3>
+                <p className="text-slate-500 text-lg font-medium leading-relaxed mb-12">
+                  {selectedItem.error || "The AI studio encountered a capacity issue. Please check your credentials or retry."}
                 </p>
                 <div className="flex flex-col gap-4">
                   <button 
                     onClick={() => updateItemStatus(selectedItem.id, 'PENDING')}
-                    className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-3xl font-black text-lg transition-all active:scale-95 shadow-2xl shadow-indigo-600/30"
+                    className="w-full py-5.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-lg shadow-2xl shadow-indigo-600/40 active:scale-95 transition-all"
                   >
                     Retry Render
                   </button>
                   <button 
                     onClick={handleSelectKey}
-                    className="w-full py-4 bg-slate-900 border border-slate-800 text-slate-300 rounded-2xl font-bold active:scale-95"
+                    className="w-full py-4.5 bg-slate-900 border border-slate-800 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95"
                   >
-                    Change API Key
+                    Change AI Project Key
                   </button>
                 </div>
               </div>
@@ -238,11 +244,11 @@ const App: React.FC = () => {
 
           {selectedItem && selectedItem.status === 'COMPLETED' && selectedItem.result && (
             <div className="animate-fadeIn px-2 md:px-0">
-              <div className="text-center mb-10 space-y-2">
-                 <h2 className="text-4xl md:text-5xl font-black text-white tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-600">
-                    Creative Studio
+              <div className="text-center mb-12 space-y-3">
+                 <h2 className="text-5xl md:text-7xl font-black text-white tracking-tighter bg-clip-text text-transparent bg-gradient-to-b from-white to-slate-800">
+                    Production Suite
                  </h2>
-                 <p className="text-indigo-400 font-black uppercase tracking-[0.4em] text-[10px]">Production Approved</p>
+                 <p className="text-indigo-400 font-black uppercase tracking-[0.6em] text-[9px] opacity-80">Final Mastering & Post-Production</p>
               </div>
               <VideoEditor 
                 result={selectedItem.result} 
@@ -256,9 +262,13 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      <footer className="py-12 border-t border-slate-900/40 text-center space-y-4">
-        <p className="uppercase tracking-[0.4em] font-black text-slate-700 text-[10px]">AI-Native Commercial Studio</p>
-        <p className="text-slate-600 text-xs">&copy; {new Date().getFullYear()} AdGenius AI. Powered by Veo & Gemini.</p>
+      <footer className="py-16 border-t border-slate-900/30 text-center space-y-6">
+        <div className="flex items-center justify-center gap-4 text-slate-800">
+          <div className="w-12 h-px bg-slate-900"></div>
+          <p className="uppercase tracking-[0.5em] font-black text-[10px]">AI-Powered Marketing</p>
+          <div className="w-12 h-px bg-slate-900"></div>
+        </div>
+        <p className="text-slate-600 text-[10px] font-bold">&copy; {new Date().getFullYear()} AdGenius AI Studio. Powered by Google Veo & Gemini 2.5.</p>
       </footer>
     </div>
   );

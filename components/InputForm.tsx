@@ -1,7 +1,7 @@
 
 import React, { useRef, useState } from 'react';
 import { ProductData, VoiceName } from '../types';
-import { Upload, X, Globe, Mic, Plus, Wand2 } from './Icons';
+import { Upload, X, Globe, Mic, Plus, Wand2, ImageIcon } from './Icons';
 
 interface InputFormProps {
   onSubmit: (data: ProductData) => void;
@@ -30,10 +30,6 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (images.length === 0) {
-      alert("Please upload at least one product image.");
-      return;
-    }
     
     onSubmit({
       id: crypto.randomUUID(),
@@ -59,37 +55,37 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto bg-slate-800/50 border border-slate-700 p-5 md:p-6 rounded-3xl shadow-xl relative z-10">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl md:text-2xl font-semibold text-white">New Ad Project</h2>
-        <span className="px-2 py-1 bg-indigo-500/20 text-indigo-300 text-[10px] md:text-xs rounded border border-indigo-500/30 font-bold uppercase tracking-wider">Veo 3.1</span>
+    <div className="w-full max-w-xl mx-auto bg-slate-800/50 border border-slate-700 p-5 md:p-8 rounded-[40px] shadow-2xl relative z-10 pointer-events-auto">
+      <div className="flex justify-between items-center mb-8">
+        <h2 className="text-2xl md:text-3xl font-black text-white tracking-tight">New Ad Concept</h2>
+        <div className="px-3 py-1 bg-indigo-500/20 text-indigo-400 text-[10px] font-black rounded-full border border-indigo-500/30 uppercase tracking-widest">Veo 3.1</div>
       </div>
       
-      <form onSubmit={handleSubmit} className="space-y-5 md:space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Product Name <span className="text-red-500">*</span></label>
+            <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2.5">Product Name <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
               disabled={isProcessing}
-              placeholder="e.g. Aura Headphones"
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="e.g. Lumina Pro"
+              className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-5 py-4 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Website (Optional)</label>
+            <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2.5">Website (Optional)</label>
             <div className="relative">
-              <Globe className="absolute left-3 top-3.5 w-4 h-4 text-slate-500" />
+              <Globe className="absolute left-4 top-4.5 w-4 h-4 text-slate-600" />
               <input
                 type="url"
                 value={websiteUrl}
                 onChange={(e) => setWebsiteUrl(e.target.value)}
                 disabled={isProcessing}
-                placeholder="https://brand.com"
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-3.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="brand.com"
+                className="w-full bg-slate-900 border border-slate-700 rounded-2xl pl-11 pr-4 py-4 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
               />
             </div>
           </div>
@@ -97,32 +93,32 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Target Audience <span className="text-red-500">*</span></label>
+            <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2.5">Target Audience <span className="text-red-500">*</span></label>
             <input
               type="text"
               value={targetAudience}
               onChange={(e) => setTargetAudience(e.target.value)}
               required
               disabled={isProcessing}
-              placeholder="e.g. Gen Z Creatives"
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="e.g. Tech Enthusiasts"
+              className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-5 py-4 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-2">Ad Format</label>
+            <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2.5">Ad Format</label>
             <div className="flex gap-2">
               {['16:9', '9:16'].map((ratio) => (
                 <button
                   key={ratio}
                   type="button"
                   onClick={() => setAspectRatio(ratio as any)}
-                  className={`flex-1 py-3.5 rounded-xl border text-xs font-bold transition-all active:scale-95 ${
+                  className={`flex-1 py-4 rounded-2xl border text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${
                     aspectRatio === ratio 
-                      ? 'border-indigo-500 bg-indigo-500/10 text-white' 
-                      : 'border-slate-700 bg-slate-900 text-slate-400'
+                      ? 'border-indigo-500 bg-indigo-500/10 text-white shadow-lg' 
+                      : 'border-slate-800 bg-slate-900/50 text-slate-500'
                   }`}
                 >
-                  {ratio === '16:9' ? 'Wide (YouTube)' : 'Tall (TikTok)'}
+                  {ratio === '16:9' ? 'Wide' : 'Tall'}
                 </button>
               ))}
             </div>
@@ -130,44 +126,47 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">Product Description <span className="text-red-500">*</span></label>
+          <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2.5">Commercial Focus <span className="text-red-500">*</span></label>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             required
             disabled={isProcessing}
-            placeholder="What makes this product special? Describe its vibe and key features."
+            placeholder="Describe features, key selling points, and visual mood..."
             rows={3}
-            className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3.5 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+            className="w-full bg-slate-900 border border-slate-700 rounded-2xl px-5 py-4 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none transition-all"
           />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-2">
-            Product Reference Photo <span className="text-red-500">*</span>
+          <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2.5 flex items-center justify-between">
+            <span>Product Photo (Optional)</span>
+            {images.length === 0 && <span className="text-[9px] text-indigo-400 font-black flex items-center gap-1"><Wand2 size={10}/> AI will generate if empty</span>}
           </label>
           <div className="mb-2">
             {images.length > 0 ? (
-              <div className="relative group h-32 w-full bg-slate-900 rounded-2xl overflow-hidden border border-slate-700">
-                <img src={URL.createObjectURL(images[0])} className="w-full h-full object-contain p-2" alt="Product" />
+              <div className="relative group h-36 w-full bg-slate-950 rounded-[32px] overflow-hidden border border-slate-700 shadow-inner">
+                <img src={URL.createObjectURL(images[0])} className="w-full h-full object-contain p-4" alt="Product" />
                 <button 
                   type="button" 
                   onClick={() => setImages([])} 
-                  className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-all text-white font-bold gap-2 active:opacity-100"
+                  className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-all text-white font-black text-xs uppercase tracking-widest gap-2 active:opacity-100"
                 >
-                  <X size={20}/> Change Image
+                  <X size={18}/> Remove Image
                 </button>
               </div>
             ) : (
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full py-12 border-2 border-dashed border-slate-700 rounded-2xl text-slate-500 hover:border-indigo-500 hover:text-indigo-400 transition-all bg-slate-900/30 flex flex-col items-center justify-center gap-3 active:scale-[0.98]"
+                className="w-full py-10 border-2 border-dashed border-slate-800 rounded-[32px] text-slate-600 hover:border-indigo-500 hover:text-indigo-400 transition-all bg-slate-900/20 flex flex-col items-center justify-center gap-3 active:scale-[0.98]"
               >
-                <Upload size={32} />
+                <div className="p-3 bg-slate-900 rounded-2xl shadow-xl">
+                  <ImageIcon size={28} />
+                </div>
                 <div className="text-center">
-                  <span className="text-sm font-bold block">Upload Product Photo</span>
-                  <span className="text-[10px] uppercase tracking-wider opacity-60">Used by Veo for visual consistency</span>
+                  <span className="text-xs font-black uppercase tracking-widest block">Upload Brand Asset</span>
+                  <span className="text-[10px] opacity-40">PNG, JPG or WEBP</span>
                 </div>
               </button>
             )}
@@ -179,19 +178,19 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
           <button 
             type="button" 
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="w-full py-3 text-xs font-bold text-slate-400 hover:text-indigo-400 flex items-center justify-center gap-2 mb-4 bg-slate-900/30 rounded-xl border border-slate-700/50 active:scale-95 transition-all"
+            className="w-full py-3.5 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-indigo-400 flex items-center justify-center gap-3 mb-4 bg-slate-950/40 rounded-2xl border border-slate-800/50 active:scale-95 transition-all"
           >
-             <Wand2 size={14}/> {showAdvanced ? 'Hide' : 'Configure'} AI Narrator & Overlays
+             {showAdvanced ? 'Simple Mode' : 'Advanced Creative Controls'}
           </button>
 
           {showAdvanced && (
-            <div className="space-y-4 p-5 bg-slate-900/50 rounded-2xl border border-slate-700 animate-fadeIn">
+            <div className="space-y-4 p-6 bg-slate-950/60 rounded-[32px] border border-slate-800 animate-fadeIn shadow-inner">
               <div>
-                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1"><Mic size={12}/> AI Voice Actor</label>
+                <label className="block text-[9px] font-black text-slate-600 uppercase tracking-[0.3em] mb-3 flex items-center gap-2"><Mic size={12} className="text-indigo-500"/> AI Narrator Voice</label>
                 <select 
                   value={voice}
                   onChange={(e) => setVoice(e.target.value as VoiceName)}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white focus:ring-1 focus:ring-indigo-500"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 text-xs font-bold text-white focus:ring-1 focus:ring-indigo-500 appearance-none"
                 >
                   {['Kore', 'Puck', 'Charon', 'Fenrir', 'Zephyr'].map(v => (
                     <option key={v} value={v}>{v}</option>
@@ -200,23 +199,23 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                  <div>
-                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Intro Text</label>
+                   <label className="block text-[9px] font-black text-slate-600 uppercase tracking-[0.3em] mb-3">Intro Script</label>
                    <input 
                      type="text" 
-                     placeholder="e.g. Experience the New..." 
+                     placeholder="Fade in text..." 
                      value={introText}
                      onChange={e => setIntroText(e.target.value)}
-                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white"
+                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 text-xs font-bold text-white"
                    />
                  </div>
                  <div>
-                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Outro Text</label>
+                   <label className="block text-[9px] font-black text-slate-600 uppercase tracking-[0.3em] mb-3">Outro Script</label>
                    <input 
                      type="text" 
-                     placeholder="e.g. Shop Now at Brand.com" 
+                     placeholder="Call to action..." 
                      value={outroText}
                      onChange={e => setOutroText(e.target.value)}
-                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white"
+                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-5 py-4 text-xs font-bold text-white"
                    />
                  </div>
               </div>
@@ -226,10 +225,10 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
 
         <button
           type="submit"
-          className="w-full py-4.5 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 active:scale-95 shadow-indigo-600/20 uppercase tracking-widest text-sm"
+          className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black rounded-3xl shadow-2xl transition-all flex items-center justify-center gap-3 active:scale-95 shadow-indigo-600/30 uppercase tracking-widest text-sm border border-indigo-400/20"
         >
           <Plus size={20} />
-          Create Ad Concept
+          Start Production
         </button>
       </form>
     </div>
