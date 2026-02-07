@@ -20,7 +20,7 @@ import {
   Zap,
   Layout
 } from 'lucide-react';
-import { initiateVideoRender, pollVideoAdStatus, generateVoiceover } from '../services/geminiService';
+import { initiateVideoRender, pollVideoAdStatus, generateVoiceover, fetchVideoBlob } from '../services/geminiService';
 
 interface AdPlanDisplayProps {
   item: BatchItem;
@@ -35,6 +35,7 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
   const [activeSceneId, setActiveSceneId] = useState<string | null>(plan?.scene_map[0]?.scene_id || null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [renderLogs, setRenderLogs] = useState<Record<string, string[]>>({});
+  const [isDownloading, setIsDownloading] = useState(false);
   
   const activeScene = plan?.scene_map.find(s => s.scene_id === activeSceneId);
 
@@ -165,6 +166,29 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
       v.removeEventListener('ended', handleEnded);
     };
   }, [activeSceneId, activeScene?.videoUrl]);
+
+  // Robust download handler
+  const handleDownloadVideo = async () => {
+    if (!activeScene?.videoUrl || isDownloading) return;
+    
+    setIsDownloading(true);
+    try {
+      const blobUrl = await fetchVideoBlob(activeScene.videoUrl);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `${item.data.name}-scene-${activeSceneId}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(blobUrl);
+      }, 100);
+    } catch (error: any) {
+      alert(`Download failed: ${error.message}. Ensure your project has billing enabled for Veo.`);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   if (!plan) return null;
 
@@ -310,7 +334,7 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
                    {activeScene?.renderStatus === 'RENDERING' || activeScene?.renderStatus === 'POLLING' ? (
                      <div className="w-full space-y-6">
                         <div className="w-16 h-16 mx-auto mb-4 relative">
-                           <Loader2 className="w-full h-full text-indigo-500 animate-spin" />
+                           <Loader2 className="w-16 h-16 text-indigo-500 animate-spin" />
                            <Activity className="absolute inset-0 m-auto w-6 h-6 text-indigo-400 opacity-50" />
                         </div>
                         <div className="space-y-2">
@@ -347,17 +371,12 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
 
             <div className="mt-8 space-y-3">
                <button 
-                 disabled={!activeScene?.videoUrl}
-                 onPointerDown={() => {
-                   if (!activeScene?.videoUrl) return;
-                   const a = document.createElement('a');
-                   a.href = activeScene.videoUrl;
-                   a.download = `${item.data.name}-scene-${activeSceneId}.mp4`;
-                   a.click();
-                 }}
+                 disabled={!activeScene?.videoUrl || isDownloading}
+                 onPointerDown={(e) => { e.preventDefault(); handleDownloadVideo(); }}
                  className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 text-white rounded-[24px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 shadow-2xl shadow-indigo-600/20 disabled:opacity-30 disabled:grayscale"
                >
-                 <FileVideo size={18} /> Download Shot (MP4)
+                 {isDownloading ? <Loader2 size={18} className="animate-spin" /> : <FileVideo size={18} />} 
+                 {isDownloading ? 'Downloading...' : 'Download Shot (MP4)'}
                </button>
                <button 
                  disabled={!activeScene?.audioUrl}

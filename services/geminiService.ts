@@ -22,6 +22,15 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2, currentDelay = 50
     return await fn();
   } catch (error: any) {
     const errorStr = JSON.stringify(error).toLowerCase();
+    
+    // Auto-prompt key re-selection if the current project/key is invalid or not found
+    if (errorStr.includes('requested entity was not found')) {
+      if ((window as any).aistudio?.openSelectKey) {
+        (window as any).aistudio.openSelectKey();
+      }
+      throw new Error("Project or API Key not found. Please re-select a valid key from a paid GCP project.");
+    }
+
     const isQuotaError = errorStr.includes('429') || errorStr.includes('resource_exhausted');
     if (retries > 0 && isQuotaError) {
       await new Promise(resolve => setTimeout(resolve, currentDelay));
@@ -143,85 +152,108 @@ export const initiateVideoRender = async (
   images: File[],
   aspectRatio: '16:9' | '9:16'
 ): Promise<any> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("Missing API Key");
+  return withRetry(async () => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) throw new Error("Missing API Key");
 
-  const ai = new GoogleGenAI({ apiKey });
-  let imagePart = undefined;
-  if (images.length > 0) {
-    const base64 = await fileToBase64(images[0]);
-    imagePart = { imageBytes: base64, mimeType: images[0].type };
-  }
-
-  // Use the SDK for video generation as recommended
-  const operation = await ai.models.generateVideos({
-    model: 'veo-3.1-fast-generate-preview',
-    prompt: `A high-end professional commercial video: ${prompt}. Cinematic lighting, 8k resolution, smooth motion.`,
-    image: imagePart,
-    config: { 
-      numberOfVideos: 1, 
-      resolution: '720p', 
-      aspectRatio 
+    const ai = new GoogleGenAI({ apiKey });
+    let imagePart = undefined;
+    if (images.length > 0) {
+      const base64 = await fileToBase64(images[0]);
+      imagePart = { imageBytes: base64, mimeType: images[0].type };
     }
-  });
 
-  return operation;
+    const operation = await ai.models.generateVideos({
+      model: 'veo-3.1-fast-generate-preview',
+      prompt: `A high-end professional commercial video: ${prompt}. Cinematic lighting, 8k resolution, smooth motion.`,
+      image: imagePart,
+      config: { 
+        numberOfVideos: 1, 
+        resolution: '720p', 
+        aspectRatio 
+      }
+    });
+
+    return operation;
+  });
 };
 
 // Poll for video generation progress using the Google GenAI SDK
 export const pollVideoAdStatus = async (operation: any): Promise<{ done: boolean, videoUrl?: string, error?: string, operation?: any }> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) return { done: true, error: "API Key missing" };
+  return withRetry(async () => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) return { done: true, error: "API Key missing" };
 
-  const ai = new GoogleGenAI({ apiKey });
-  const updatedOperation = await ai.operations.getVideosOperation({ operation });
+    const ai = new GoogleGenAI({ apiKey });
+    const updatedOperation = await ai.operations.getVideosOperation({ operation });
 
-  if (updatedOperation.done) {
-    if (updatedOperation.error) return { done: true, error: updatedOperation.error.message };
-    const video = updatedOperation.response?.generatedVideos?.[0]?.video;
-    if (!video?.uri) return { done: true, error: "Video URI missing" };
-    // Append the API key to the URI to fetch the MP4 bytes
-    return {
-      done: true,
-      videoUrl: `${video.uri}${video.uri.includes('?') ? '&' : '?'}key=${apiKey}`,
-      operation: updatedOperation
-    };
+    if (updatedOperation.done) {
+      if (updatedOperation.error) return { done: true, error: updatedOperation.error.message };
+      const video = updatedOperation.response?.generatedVideos?.[0]?.video;
+      if (!video?.uri) return { done: true, error: "Video URI missing" };
+      
+      // Append the API key to the URI to fetch the MP4 bytes as per instructions
+      return {
+        done: true,
+        videoUrl: `${video.uri}${video.uri.includes('?') ? '&' : '?'}key=${apiKey}`,
+        operation: updatedOperation
+      };
+    }
+    return { done: false, operation: updatedOperation };
+  });
+};
+
+// Robust helper to download video from the signed URL using fetch to avoid cross-origin API errors
+export const fetchVideoBlob = async (videoUrl: string): Promise<string> => {
+  try {
+    const response = await fetch(videoUrl);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error?.message || `Download failed with status ${response.status}`);
+    }
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch (error: any) {
+    if (error.message.includes('Requested entity was not found')) {
+       if ((window as any).aistudio?.openSelectKey) (window as any).aistudio.openSelectKey();
+    }
+    throw error;
   }
-  return { done: false, operation: updatedOperation };
 };
 
 // Extend an existing video by adding 5 seconds of footage
 export const extendVideo = async (previousOperation: any, prompt: string, aspectRatio: '16:9' | '9:16'): Promise<GeneratedResult> => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("Missing API Key");
+  return withRetry(async () => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) throw new Error("Missing API Key");
 
-  const ai = new GoogleGenAI({ apiKey });
-  
-  // Extensions require the veo-3.1-generate-preview model and use the previous video object
-  let operation = await ai.models.generateVideos({
-    model: 'veo-3.1-generate-preview',
-    prompt: prompt || 'Continue the video naturally',
-    video: previousOperation.response?.generatedVideos?.[0]?.video,
-    config: {
-      numberOfVideos: 1,
-      resolution: '720p',
-      aspectRatio: aspectRatio,
+    const ai = new GoogleGenAI({ apiKey });
+    
+    let operation = await ai.models.generateVideos({
+      model: 'veo-3.1-generate-preview',
+      prompt: prompt || 'Continue the video naturally',
+      video: previousOperation.response?.generatedVideos?.[0]?.video,
+      config: {
+        numberOfVideos: 1,
+        resolution: '720p',
+        aspectRatio: aspectRatio,
+      }
+    });
+
+    while (!operation.done) {
+      await new Promise(resolve => setTimeout(resolve, 8000));
+      operation = await ai.operations.getVideosOperation({ operation: operation });
     }
+
+    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+    const videoUrl = `${downloadLink}&key=${apiKey}`;
+
+    return {
+      videoUrl,
+      audioUrl: null,
+      videoOperation: operation
+    };
   });
-
-  while (!operation.done) {
-    await new Promise(resolve => setTimeout(resolve, 8000));
-    operation = await ai.operations.getVideosOperation({ operation: operation });
-  }
-
-  const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-  const videoUrl = `${downloadLink}&key=${apiKey}`;
-
-  return {
-    videoUrl,
-    audioUrl: null,
-    videoOperation: operation
-  };
 };
 
 // Generate high fidelity voiceover using Gemini 2.5 Flash TTS
@@ -262,7 +294,6 @@ const createWavUrl = (base64PCM: string): string => {
   return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
 };
 
-// Generate AI product visuals using Gemini 2.5 Flash Image
 export const generatePlaceholderImage = async (name: string, description: string, aspectRatio: '16:9' | '9:16'): Promise<{ imageBytes: string; mimeType: string }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   const response = await ai.models.generateContent({
