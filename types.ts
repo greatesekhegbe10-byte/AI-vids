@@ -1,18 +1,32 @@
 
-export enum AppState {
-  IDLE = 'IDLE',
-  PROCESSING = 'PROCESSING',
-  STUDIO = 'STUDIO',
-  ERROR = 'ERROR'
-}
-
 export type VoiceName = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Zephyr';
 
-export interface CreativeConcept {
-  visualPrompt: string;
-  slogan: string;
-  voiceoverScript: string;
-  scenes: { description: string; duration: string; textOverlay: string }[];
+export interface AdScene {
+  scene_id: string;
+  scene_goal: 'hook' | 'educate' | 'persuade' | 'convert';
+  duration_seconds: number;
+  scene_title: string;
+  voiceover_text: string;
+  on_screen_text: string;
+  visual_instruction: string;
+}
+
+export interface AdPlan {
+  scene_map: AdScene[];
+  audio_strategy: {
+    voice_style: string;
+    music_suggestion: string;
+  };
+  cta_block: {
+    primary: string;
+    urgency: string;
+    variants: string[];
+  };
+  derivatives: {
+    teaser_15s: string[];
+    ad_30s: string[];
+    ad_60s: string[];
+  };
 }
 
 export interface ProductData {
@@ -22,18 +36,20 @@ export interface ProductData {
   description: string;
   targetAudience: string; 
   slogan: string;
+  goal: 'SALES' | 'SIGNUPS' | 'AWARENESS' | 'RETARGETING';
+  tone: 'LUXURY' | 'ENERGETIC' | 'TECHY' | 'PROFESSIONAL' | 'FUN';
+  platform: 'YOUTUBE' | 'TIKTOK' | 'INSTAGRAM' | 'WEBSITE';
+  maxDuration: number;
   images: File[];
   aspectRatio: '16:9' | '9:16';
   voice: VoiceName;
-  introText?: string;
-  outroText?: string;
 }
 
 export interface GeneratedResult {
   videoUrl: string;
   audioUrl: string | null;
   videoOperation?: any; 
-  concept?: CreativeConcept;
+  plan?: AdPlan;
 }
 
 export interface BatchItem {
@@ -41,8 +57,7 @@ export interface BatchItem {
   data: ProductData;
   status: 'PENDING' | 'INITIATING' | 'QUOTA_WAIT' | 'POLLING' | 'COMPLETED' | 'FAILED';
   result?: GeneratedResult;
-  concept?: CreativeConcept; // Textual plan available early
+  plan?: AdPlan;
   error?: string;
-  progress?: string;
   operationName?: string;
 }

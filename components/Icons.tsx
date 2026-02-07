@@ -20,7 +20,11 @@ import {
   Music,
   Maximize,
   X,
-  Globe
+  Globe,
+  Target,
+  Zap,
+  Layout,
+  Clock
 } from 'lucide-react';
 
 export { 
@@ -44,5 +48,9 @@ export {
   Music, 
   Maximize,
   X,
-  Globe
+  Globe,
+  Target,
+  Zap,
+  Layout,
+  Clock
 };

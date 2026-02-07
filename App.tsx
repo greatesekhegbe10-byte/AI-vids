@@ -3,11 +3,10 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/Header';
 import { InputForm } from './components/InputForm';
 import { BatchQueue } from './components/BatchQueue';
-import { VideoEditor } from './components/VideoEditor';
-import { LoadingScreen } from './components/LoadingScreen';
-import { generateCreativeConcept, initiateVideoRender, pollVideoAdStatus, generateVoiceover } from './services/geminiService';
-import { ProductData, BatchItem, CreativeConcept } from './types';
-import { AlertCircle, Key, Clock, ExternalLink, ShieldCheck, FileText, CheckCircle2, Loader2, RefreshCw } from 'lucide-react';
+import { AdPlanDisplay } from './components/AdPlanDisplay';
+import { generateAdPlan, initiateVideoRender, pollVideoAdStatus, generateVoiceover } from './services/geminiService';
+import { ProductData, BatchItem, AdPlan } from './types';
+import { Cpu, Video, Loader2, Key, ExternalLink } from 'lucide-react';
 
 const App: React.FC = () => {
   const [queue, setQueue] = useState<BatchItem[]>([]);
@@ -19,274 +18,192 @@ const App: React.FC = () => {
   const processingRef = useRef<boolean>(false);
 
   useEffect(() => {
-    checkApiKey();
-    const interval = setInterval(checkApiKey, 5000);
+    const checkKey = async () => {
+      const aistudio = (window as any).aistudio;
+      const hasEnvKey = !!process.env.API_KEY;
+      if (aistudio?.hasSelectedApiKey) {
+        setApiKeyReady(await aistudio.hasSelectedApiKey() || hasEnvKey);
+      } else setApiKeyReady(hasEnvKey);
+    };
+    checkKey();
+    const interval = setInterval(checkKey, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleSelectKey = async () => {
+    const aistudio = (window as any).aistudio;
+    if (aistudio?.openSelectKey) {
+      await aistudio.openSelectKey();
+      setApiKeyReady(true);
+    }
+  };
 
   const updateItemStatus = useCallback((id: string, status: BatchItem['status'], error?: string) => {
     setQueue(prev => prev.map(i => i.id === id ? { ...i, status, error: error || i.error } : i));
   }, []);
 
-  const stopPolling = useCallback((id: string) => {
-    if (pollingIntervals.current[id]) {
-      window.clearInterval(pollingIntervals.current[id]);
-      delete pollingIntervals.current[id];
-    }
-  }, []);
-
-  // Main Queue Processor
-  useEffect(() => {
-    if (processingRef.current) return;
-
-    const processQueue = async () => {
-      const nextItem = queue.find(item => item.status === 'PENDING');
-      if (!nextItem) {
-        setIsQueueRunning(false);
-        return;
-      }
-
-      processingRef.current = true;
-      setIsQueueRunning(true);
-      updateItemStatus(nextItem.id, 'INITIATING');
-
-      if (!selectedItemId) setSelectedItemId(nextItem.id);
-
-      try {
-        // Step 1: Generate Concept (Script, Storyboard, etc.) - Fast/Reliable
-        const concept = await generateCreativeConcept(
-          nextItem.data.name,
-          nextItem.data.websiteUrl,
-          nextItem.data.description,
-          nextItem.data.targetAudience,
-          nextItem.data.slogan
-        );
-
-        // Store concept immediately so user can see it
-        setQueue(prev => prev.map(i => i.id === nextItem.id ? { ...i, concept } : i));
-
-        // Step 2: Generate Voiceover
-        const audioUrl = await generateVoiceover(concept.voiceoverScript, nextItem.data.voice);
-
-        // Step 3: Attempt Video Render
-        try {
-          const operationName = await initiateVideoRender(concept, nextItem.data.images, nextItem.data.aspectRatio);
-          setQueue(prev => prev.map(i => 
-            i.id === nextItem.id ? { 
-              ...i, 
-              status: 'POLLING', 
-              operationName,
-              result: { videoUrl: '', audioUrl, concept } 
-            } : i
-          ));
-        } catch (videoError: any) {
-          if (videoError.message.includes('429') || videoError.message.includes('RESOURCE_EXHAUSTED')) {
-            updateItemStatus(nextItem.id, 'QUOTA_WAIT', "Quota Exhausted. Waiting to retry video render...");
-          } else {
-            throw videoError;
-          }
-        }
-      } catch (error: any) {
-        console.error("Initiation error:", error);
-        updateItemStatus(nextItem.id, 'FAILED', error.message || "Production Failed");
-      } finally {
-        processingRef.current = false;
-      }
-    };
-
-    processQueue();
-  }, [queue, selectedItemId, updateItemStatus]);
-
-  // Unified Polling Handler
-  useEffect(() => {
-    const activePollingItems = queue.filter(item => (item.status === 'POLLING' || item.status === 'QUOTA_WAIT') && item.operationName);
-    
-    activePollingItems.forEach(item => {
-      if (!pollingIntervals.current[item.id]) {
-        const runPoll = async () => {
-          try {
-            const status = await pollVideoAdStatus(item.operationName!);
-            if (status.done) {
-              stopPolling(item.id);
-              if (status.error) {
-                updateItemStatus(item.id, 'FAILED', status.error);
-              } else if (status.result) {
-                setQueue(prev => prev.map(i => i.id === item.id ? {
-                  ...i,
-                  status: 'COMPLETED',
-                  result: { ...status.result!, audioUrl: i.result?.audioUrl || null, concept: i.concept }
-                } : i));
-              }
-            } else if (status.isQuotaExhausted) {
-              updateItemStatus(item.id, 'QUOTA_WAIT');
-            } else {
-              if (item.status === 'QUOTA_WAIT') updateItemStatus(item.id, 'POLLING');
-            }
-          } catch (e) {
-            console.error(`Poll error for item ${item.id}:`, e);
-          }
-        };
-
-        pollingIntervals.current[item.id] = window.setInterval(runPoll, 20000); // Slower polling for quota safety
-        runPoll(); 
-      }
-    });
-
-    return () => {};
-  }, [queue, stopPolling, updateItemStatus]);
-
-  const checkApiKey = async () => {
-    const aistudio = (window as any).aistudio;
-    const hasEnvKey = !!process.env.API_KEY && process.env.API_KEY !== "";
-    if (aistudio && aistudio.hasSelectedApiKey) {
-      const hasSelected = await aistudio.hasSelectedApiKey();
-      setApiKeyReady(hasSelected || hasEnvKey);
-    } else {
-      setApiKeyReady(hasEnvKey);
-    }
-  };
-
-  const handleSelectKey = async () => {
-    const aistudio = (window as any).aistudio;
-    if (aistudio && aistudio.openSelectKey) {
-      try {
-        await aistudio.openSelectKey();
-        setApiKeyReady(true);
-      } catch (e) { console.error("Studio Setup Error:", e); }
-    }
-  };
-
   const handleAddToQueue = (data: ProductData) => {
     setQueue(prev => [...prev, { id: data.id, data, status: 'PENDING' }]);
   };
 
-  const handleRemoveFromQueue = (id: string) => {
-    stopPolling(id);
-    setQueue(prev => prev.filter(i => i.id !== id));
-    if (selectedItemId === id) setSelectedItemId(null);
-  };
+  // MAIN PRODUCTION PIPELINE
+  useEffect(() => {
+    if (processingRef.current) return;
+    
+    const processQueue = async () => {
+      const nextItem = queue.find(item => item.status === 'PENDING');
+      if (!nextItem) { setIsQueueRunning(false); return; }
+      
+      processingRef.current = true;
+      setIsQueueRunning(true);
+      updateItemStatus(nextItem.id, 'INITIATING');
+      if (!selectedItemId) setSelectedItemId(nextItem.id);
+
+      try {
+        // PHASE 1: STRATEGY GENERATION (FAST)
+        const plan = await generateAdPlan(
+          nextItem.data.name, nextItem.data.websiteUrl, nextItem.data.description,
+          nextItem.data.targetAudience, nextItem.data.slogan,
+          nextItem.data.goal, nextItem.data.tone, nextItem.data.platform, nextItem.data.maxDuration,
+          nextItem.data.images
+        );
+
+        // Update UI immediately with the Plan
+        setQueue(prev => prev.map(i => i.id === nextItem.id ? { 
+          ...i, 
+          plan, 
+          status: 'POLLING', // Moving to polling immediately for the render phase
+          result: { videoUrl: '', audioUrl: null, plan } 
+        } : i));
+
+        // PHASE 2: PARALLEL RENDERING (SLOW)
+        const hookScene = plan.scene_map.find(s => s.scene_goal === 'hook') || plan.scene_map[0];
+        
+        // Start Render and TTS in parallel
+        const [videoOpName] = await Promise.all([
+          initiateVideoRender(hookScene.visual_instruction, nextItem.data.images, nextItem.data.aspectRatio),
+          generateVoiceover(hookScene.voiceover_text, nextItem.data.voice).then(audioUrl => {
+            setQueue(prev => prev.map(i => i.id === nextItem.id ? { 
+              ...i, 
+              result: { ...(i.result || { videoUrl: '', audioUrl: null }), audioUrl } 
+            } : i));
+          })
+        ]);
+
+        // Update the item with the operation name so polling starts
+        setQueue(prev => prev.map(i => i.id === nextItem.id ? { 
+          ...i, 
+          operationName: videoOpName 
+        } : i));
+
+      } catch (error: any) {
+        updateItemStatus(nextItem.id, 'FAILED', error.message || "Engine failure");
+      } finally { 
+        processingRef.current = false; 
+      }
+    };
+    processQueue();
+  }, [queue, selectedItemId, updateItemStatus]);
+
+  // STABLE POLLING LOOP
+  useEffect(() => {
+    const active = queue.filter(item => item.status === 'POLLING' && item.operationName);
+    active.forEach(item => {
+      if (!pollingIntervals.current[item.id]) {
+        const run = async () => {
+          const status = await pollVideoAdStatus(item.operationName!);
+          if (status.done) {
+            window.clearInterval(pollingIntervals.current[item.id]);
+            delete pollingIntervals.current[item.id];
+            if (status.result) {
+              setQueue(prev => prev.map(i => i.id === item.id ? { 
+                ...i, 
+                status: 'COMPLETED', 
+                result: { ...status.result!, audioUrl: i.result?.audioUrl || null, plan: i.plan } 
+              } : i));
+            } else {
+              updateItemStatus(item.id, 'FAILED', status.error);
+            }
+          }
+        };
+        // Shorter poll interval (8s) for faster feeling transition
+        pollingIntervals.current[item.id] = window.setInterval(run, 8000);
+        run();
+      }
+    });
+  }, [queue, updateItemStatus]);
 
   const selectedItem = queue.find(i => i.id === selectedItemId);
 
-  if (!apiKeyReady && (!process.env.API_KEY || process.env.API_KEY === "")) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center p-8 text-white relative">
-        <div className="max-w-md w-full text-center space-y-12 animate-fadeIn relative z-[100]">
-           <div className="bg-slate-900 border border-slate-700/50 p-10 rounded-[48px] shadow-2xl inline-block">
-              <Key className="w-20 h-20 text-indigo-400 mx-auto" />
-           </div>
-           <h1 className="text-5xl font-black">AdGenius</h1>
-           <p className="text-slate-500">Setup your studio key to begin.</p>
-           <button 
-             onPointerDown={handleSelectKey}
-             className="w-full py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[32px] font-black text-xl shadow-2xl transition-all min-h-[72px]"
-           >
-             Setup Studio Key
-           </button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-x-hidden relative">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30">
       <Header onSelectKey={handleSelectKey} apiKeyReady={apiKeyReady} />
-
-      <main className="flex-grow container mx-auto px-6 py-10 md:py-16 relative z-10">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16 items-start">
-          <InputForm onSubmit={handleAddToQueue} isProcessing={isQueueRunning} />
-          
-          <div className="space-y-10">
-            <div className="bg-slate-900/30 p-8 rounded-[48px] border border-slate-800/40 shadow-inner min-h-[500px] flex flex-col pointer-events-auto">
-               <h2 className="text-2xl font-black text-white mb-8">Active Queue</h2>
-               {queue.length === 0 ? (
-                 <div className="flex-grow flex flex-col items-center justify-center text-slate-800">
-                   <AlertCircle size={48} className="mb-4 opacity-40" />
-                   <p className="uppercase tracking-[0.3em] text-[10px]">No Tasks</p>
-                 </div>
-               ) : (
-                 <BatchQueue items={queue} onRemove={handleRemoveFromQueue} onSelect={(item) => setSelectedItemId(item.id)} processingId={processingRef.current ? 'active' : null} />
-               )}
+      
+      {!apiKeyReady && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
+          <div className="w-full max-md:max-w-md bg-slate-900 border border-slate-800 rounded-[40px] p-8 md:p-12 shadow-3xl animate-in fade-in zoom-in duration-300">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center text-indigo-400 mb-8 border border-indigo-500/20">
+                <Key size={40} />
+              </div>
+              <h2 className="text-3xl font-black tracking-tighter text-white mb-4">Configuration Required</h2>
+              <p className="text-slate-400 text-sm leading-relaxed mb-8">
+                To power AdGenius and the Veo 3.1 video engine, you must connect a paid Google Gemini API key.
+              </p>
+              
+              <div className="w-full space-y-4">
+                <button 
+                  onClick={handleSelectKey}
+                  className="w-full py-5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black rounded-2xl shadow-2xl active:scale-95 transition-all uppercase tracking-widest text-xs"
+                >
+                  Configure API Key
+                </button>
+                <div className="pt-2">
+                  <a 
+                    href="https://ai.google.dev/gemini-api/docs/billing" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-400 text-[10px] font-black uppercase tracking-widest transition-colors"
+                  >
+                    Billing Documentation <ExternalLink size={12} />
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         </div>
+      )}
 
-        <div className="pt-12 border-t border-slate-900/30">
-          {selectedItem && (
-            <div className="space-y-12">
-               {/* Concept/Storyboard Preview (Always visible if generated) */}
-               {selectedItem.concept && (
-                 <div className="max-w-4xl mx-auto bg-slate-900/80 border border-slate-700/50 p-8 md:p-12 rounded-[48px] shadow-2xl animate-fadeIn">
-                    <div className="flex items-center gap-4 mb-8">
-                      <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400"><FileText size={24}/></div>
-                      <div>
-                        <h3 className="text-2xl font-black text-white">Ad Blueprint</h3>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black">AI Creative Plan</p>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                       <div className="space-y-6">
-                          <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Voiceover Script</h4>
-                          <p className="text-slate-300 leading-relaxed italic text-lg">"{selectedItem.concept.voiceoverScript}"</p>
-                          <div className="pt-4">
-                            <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Visual Style</h4>
-                            <p className="text-slate-400 text-sm leading-relaxed">{selectedItem.concept.visualPrompt}</p>
-                          </div>
-                       </div>
-                       
-                       <div className="space-y-6">
-                          <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Sequence Breakdown</h4>
-                          <div className="space-y-4">
-                            {selectedItem.concept.scenes.map((scene, idx) => (
-                              <div key={idx} className="bg-slate-950/50 border border-slate-800 p-4 rounded-2xl">
-                                <div className="flex justify-between items-start mb-2">
-                                  <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">Scene 0{idx+1}</span>
-                                  <span className="text-[10px] font-mono text-slate-600">{scene.duration}</span>
-                                </div>
-                                <p className="text-xs text-slate-400 mb-2">{scene.description}</p>
-                                <div className="text-[10px] font-bold text-white uppercase bg-slate-800 px-2 py-1 rounded inline-block">Overlay: {scene.textOverlay}</div>
-                              </div>
-                            ))}
-                          </div>
-                       </div>
-                    </div>
-                 </div>
-               )}
-
-               {/* Video Result or Status */}
-               {selectedItem.status === 'COMPLETED' && selectedItem.result ? (
-                 <VideoEditor 
-                    result={selectedItem.result} 
-                    aspectRatio={selectedItem.data.aspectRatio}
-                    onUpdate={(newResult) => setQueue(prev => prev.map(i => i.id === selectedItem.id ? { ...i, result: newResult } : i))}
-                 />
-               ) : selectedItem.status === 'QUOTA_WAIT' ? (
-                 <div className="max-w-2xl mx-auto py-20 text-center space-y-8 px-8">
-                    <div className="bg-amber-500/5 border border-amber-500/10 p-12 rounded-[48px] shadow-2xl animate-pulse">
-                      <RefreshCw className="w-16 h-16 text-amber-500 mx-auto mb-6 animate-spin-slow" />
-                      <h3 className="text-3xl font-black text-white mb-2">Quota Limit Reached</h3>
-                      <p className="text-slate-500 text-lg font-medium">The AI is currently cooling down. We've saved your Blueprint above and will automatically render the video once the quota window reopens.</p>
-                    </div>
-                 </div>
-               ) : (selectedItem.status === 'INITIATING' || selectedItem.status === 'POLLING') ? (
-                 <LoadingScreen progress={selectedItem.status === 'POLLING' ? 'AI is busy building your sequence...' : 'Analyzing product and writing script...'} />
-               ) : selectedItem.status === 'FAILED' ? (
-                 <div className="max-w-xl mx-auto py-16 text-center">
-                    <AlertCircle className="w-20 h-20 text-red-500 mx-auto mb-8" />
-                    <h3 className="text-4xl font-black text-white mb-4">Render Halted</h3>
-                    <p className="text-slate-500 mb-12">{selectedItem.error}</p>
-                    <button onPointerDown={() => updateItemStatus(selectedItem.id, 'PENDING')} className="px-12 py-5 bg-indigo-600 text-white rounded-[32px] font-black uppercase">Retry Render</button>
-                 </div>
-               ) : null}
-            </div>
-          )}
+      <main className="flex-grow container mx-auto px-6 py-12 max-w-7xl">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+          <InputForm onSubmit={handleAddToQueue} isProcessing={isQueueRunning} />
+          <div className="bg-slate-900/40 p-8 rounded-[48px] border border-slate-800/60 shadow-inner flex flex-col min-h-[500px]">
+             <h2 className="text-xl font-black mb-8 flex items-center gap-3"><Cpu size={18} className="text-indigo-400"/> Production Pipeline</h2>
+             {queue.length === 0 ? (
+               <div className="flex-grow flex flex-col items-center justify-center text-slate-800 opacity-20">
+                 <Video size={64} className="mb-4"/>
+                 <p className="text-xs font-black uppercase tracking-[0.4em]">Engine Standby</p>
+               </div>
+             ) : (
+               <BatchQueue items={queue} onRemove={(id) => setQueue(q => q.filter(i => i.id !== id))} onSelect={(item) => setSelectedItemId(item.id)} processingId={null} />
+             )}
+          </div>
         </div>
-      </main>
 
-      <footer className="py-16 border-t border-slate-900/30 text-center relative z-10 text-slate-600 text-[10px] font-bold uppercase tracking-[0.2em]">
-        AdGenius AI Studio
-      </footer>
+        {selectedItem && (
+          <div className="mt-16 animate-fadeIn">
+            {selectedItem.plan ? (
+              <AdPlanDisplay item={selectedItem} />
+            ) : (
+              <div className="flex flex-col items-center py-20 bg-slate-900/40 rounded-[48px] border border-slate-800/60">
+                 <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
+                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Synthesizing Creative Logic...</p>
+                 <span className="text-[8px] text-slate-700 mt-2">Gemini 3 Flash is performing brand analysis</span>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
     </div>
   );
 };
