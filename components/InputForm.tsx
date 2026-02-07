@@ -2,7 +2,7 @@
 import React, { useRef, useState } from 'react';
 import { ProductData, VoiceName } from '../types';
 import { Upload, Globe, Wand2, ImageIcon, Loader2, Target, Zap, Layout, Clock, Trash2, Plus, Type, Mic, Layers, Activity } from './Icons';
-import { generatePlaceholderImage } from '../services/geminiService';
+import { generatePlaceholderImage, base64ToFile } from '../services/geminiService';
 
 interface InputFormProps {
   onSubmit: (data: ProductData) => void;
@@ -18,7 +18,7 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
   const [goal, setGoal] = useState<ProductData['goal']>('SALES');
   const [tone, setTone] = useState<ProductData['tone']>('PROFESSIONAL');
   const [platform, setPlatform] = useState<ProductData['platform']>('TIKTOK');
-  const [maxDuration, setMaxDuration] = useState(15);
+  const [maxDuration, setMaxDuration] = useState(30);
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('9:16');
   const [voice, setVoice] = useState<VoiceName>('Fenrir');
   const [images, setImages] = useState<File[]>([]);
@@ -43,16 +43,7 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
     setIsGeneratingImage(true);
     try {
       const { imageBytes, mimeType } = await generatePlaceholderImage(name, description, websiteUrl, aspectRatio);
-      
-      const byteCharacters = atob(imageBytes);
-      const byteNumbers = new Array(byteCharacters.length);
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-      const byteArray = new Uint8Array(byteNumbers);
-      const blob = new Blob([byteArray], { type: mimeType });
-      const file = new File([blob], "ai-generated-product.png", { type: mimeType });
-      
+      const file = base64ToFile(imageBytes, mimeType, "ai-generated-product.png");
       setImages(prev => [...prev, file]);
     } catch (e: any) {
       console.error(e);
@@ -254,6 +245,25 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
                     className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${aspectRatio === r ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
                   >
                     {r} Aspect
+                  </button>
+                ))}
+              </div>
+           </div>
+
+           {/* Duration Selection (Updated to support minutes) */}
+           <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3 flex items-center gap-2">
+                <Clock size={12} className="text-indigo-500"/> Max Duration
+              </label>
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                {([15, 30, 60, 120, 300, 600] as const).map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => setMaxDuration(d)}
+                    className={`flex-shrink-0 px-5 py-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${maxDuration === d ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-600'}`}
+                  >
+                    {d >= 60 ? `${d / 60}m` : `${d}s`}
                   </button>
                 ))}
               </div>

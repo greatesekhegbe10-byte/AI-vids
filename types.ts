@@ -9,6 +9,7 @@ export interface AdScene {
   voiceover_text: string;
   on_screen_text: string;
   visual_instruction: string;
+  subtitle_text?: string; // New field for SRT/Subtitle data
   // Tracking per-scene rendering
   renderStatus?: 'IDLE' | 'RENDERING' | 'POLLING' | 'COMPLETED' | 'FAILED';
   videoUrl?: string;
@@ -18,6 +19,7 @@ export interface AdScene {
 }
 
 export interface AdPlan {
+  job_id?: string; // New field for backend queue tracking
   scene_map: AdScene[];
   audio_strategy: {
     voice_style: string;
@@ -33,6 +35,8 @@ export interface AdPlan {
     ad_30s: string[];
     ad_60s: string[];
   };
+  hooks?: string[]; // New field for alternative hooks
+  short_ad_cuts?: { duration: number; scene_ids: string[] }[]; // New structured cuts
 }
 
 export interface ProductData {
@@ -56,7 +60,7 @@ export interface GeneratedResult {
   audioUrl: string | null;
   videoOperation?: any; 
   plan?: AdPlan;
-  concept?: { slogan?: string }; // Added to support requirements in VideoEditor
+  concept?: { slogan?: string }; 
 }
 
 export interface BatchItem {

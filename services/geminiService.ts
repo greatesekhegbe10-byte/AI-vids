@@ -17,18 +17,43 @@ const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
+export const base64ToFile = (base64Data: string, mimeType: string, filename: string): File => {
+  const byteCharacters = atob(base64Data);
+  const byteNumbers = new Array(byteCharacters.length);
+  for (let i = 0; i < byteCharacters.length; i++) {
+    byteNumbers[i] = byteCharacters.charCodeAt(i);
+  }
+  const byteArray = new Uint8Array(byteNumbers);
+  const blob = new Blob([byteArray], { type: mimeType });
+  return new File([blob], filename, { type: mimeType });
+};
+
+// Helper to strictly get the key or throw, ensuring we don't pass undefined to SDK
+const getApiKey = (): string => {
+  const key = process.env.API_KEY;
+  if (!key) throw new Error("API Key not found in environment.");
+  return key;
+};
+
+// Trigger the AI Studio key selection dialog if available
+const triggerKeySelection = () => {
+  if ((window as any).aistudio?.openSelectKey) {
+    (window as any).aistudio.openSelectKey();
+  }
+};
+
 async function withRetry<T>(fn: () => Promise<T>, retries = 2, currentDelay = 5000): Promise<T> {
   try {
     return await fn();
   } catch (error: any) {
     const errorStr = JSON.stringify(error).toLowerCase();
     
-    // Auto-prompt key re-selection if the current project/key is invalid or not found
-    if (errorStr.includes('requested entity was not found')) {
-      if ((window as any).aistudio?.openSelectKey) {
-        (window as any).aistudio.openSelectKey();
-      }
-      throw new Error("Project or API Key not found. Please re-select a valid key from a paid GCP project.");
+    // CRITICAL: Handle "Requested entity was not found" which usually means the project/key 
+    // is not valid for Veo or the user hasn't selected a paid project key yet.
+    if (errorStr.includes('requested entity was not found') || errorStr.includes('404')) {
+      triggerKeySelection();
+      // We throw here to stop the current execution. The user must select a key and retry.
+      throw new Error("Project or API Key not found. Please select a valid key from a paid GCP project.");
     }
 
     const isQuotaError = errorStr.includes('429') || errorStr.includes('resource_exhausted');
@@ -53,41 +78,37 @@ export const generateAdPlan = async (
   maxDuration: number,
   images: File[]
 ): Promise<AdPlan> => {
-  const promptText = `AI VIDEO AD ENGINE: Generate a high-converting, modular ad plan based on the product description and attached images.
-    Product: "${name}". Slogan: "${slogan}". Goal: ${goal}. Tone: ${tone}. Platform: ${platform}. Max Duration: ${maxDuration}s.
+  
+  const promptText = `AI CREATIVE ENGINE: Generate a robust, error-proof video ad strategy.
+    Product: "${name}". Slogan: "${slogan}". Goal: ${goal}. Tone: ${tone}. Platform: ${platform}. 
+    Target Duration: ${maxDuration} seconds.
     Details: ${description}. Website: ${url}. Audience: ${targetAudience}.
 
-    STRUCTURE RULES:
-    - 5-8 independent scenes (3-10s each).
-    - Scenes: Hook, Problem, Product Intro, Feature Highlight, Social Proof, CTA.
-    
-    Return VALID JSON ONLY:
+    CRITICAL RULES (MULTI-USER SAAS MODE):
+    1. Modular Scenes: Break video into independent 30-60s scenes. If duration > 60s, ensure modularity for parallel rendering.
+    2. Missing Assets: If product images are missing/poor, 'visual_guidance' must describe a generated product shot clearly.
+    3. Payload Optimization: Output strict JSON. No markdown.
+    4. Monetization: High retention hooks, clear CTA.
+
+    OUTPUT FORMAT (JSON ONLY):
     {
+      "job_id": "UUID_v4",
       "scene_map": [
         {
-          "scene_id": "string",
-          "scene_goal": "hook | educate | persuade | convert",
-          "duration_seconds": number,
-          "scene_title": "string",
-          "voiceover_text": "string (natural, persuasive)",
-          "on_screen_text": "string (bold, high impact)",
-          "visual_instruction": "string (Detailed visual prompt for video generation)"
+          "scene_id": "s1", 
+          "title": "string", 
+          "goal": "hook|educate|persuade|convert", 
+          "duration_seconds": number
         }
       ],
-      "audio_strategy": {
-        "voice_style": "string",
-        "music_suggestion": "string"
-      },
-      "cta_block": {
-        "primary": "string",
-        "urgency": "string",
-        "variants": ["string"]
-      },
-      "derivatives": {
-        "teaser_15s": ["scene_id"],
-        "ad_30s": ["scene_id"],
-        "ad_60s": ["scene_id"]
-      }
+      "voiceover_text": [ {"scene_id": "s1", "text": "Script..."} ],
+      "onscreen_text": [ {"scene_id": "s1", "text": "Overlay..."} ],
+      "visual_guidance": [ {"scene_id": "s1", "description": "Detailed prompt...", "image_url_if_generated": "null"} ],
+      "subtitles": [ {"scene_id": "s1", "srt_text": "Subtitle text..."} ],
+      "hooks": ["hook1", "hook2", "hook3"],
+      "cta_variants": ["primary", "urgency"],
+      "short_ad_cuts": [ {"duration": 15, "scene_ids": ["s1"]} ],
+      "audio_strategy": { "voice_style": "string", "music_suggestion": "string" }
     }`;
 
   const imageParts = await Promise.all(
@@ -100,7 +121,8 @@ export const generateAdPlan = async (
   );
 
   const response = await withRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    // Always instantiate new client to get latest env key
+    const ai = new GoogleGenAI({ apiKey: getApiKey() });
     return await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: {
@@ -116,12 +138,51 @@ export const generateAdPlan = async (
   }) as GenerateContentResponse;
   
   const text = response.text || "{}";
-  return JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
+  const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+  const rawData = JSON.parse(cleanText);
+
+  // Map the raw backend-ready JSON to the frontend AdPlan interface
+  const sceneMap = rawData.scene_map.map((scene: any) => {
+    const vo = rawData.voiceover_text?.find((v: any) => v.scene_id === scene.scene_id)?.text || "";
+    const os = rawData.onscreen_text?.find((o: any) => o.scene_id === scene.scene_id)?.text || "";
+    const vis = rawData.visual_guidance?.find((v: any) => v.scene_id === scene.scene_id)?.description || "";
+    const sub = rawData.subtitles?.find((s: any) => s.scene_id === scene.scene_id)?.srt_text || "";
+
+    return {
+      scene_id: scene.scene_id,
+      scene_title: scene.title,
+      scene_goal: scene.goal,
+      duration_seconds: scene.duration_seconds,
+      voiceover_text: vo,
+      on_screen_text: os,
+      visual_instruction: vis,
+      subtitle_text: sub
+    };
+  });
+
+  return {
+    job_id: rawData.job_id || crypto.randomUUID(),
+    scene_map: sceneMap,
+    audio_strategy: rawData.audio_strategy || { voice_style: "Professional", music_suggestion: "Upbeat" },
+    cta_block: {
+      primary: rawData.cta_variants?.[0] || "Buy Now",
+      urgency: rawData.cta_variants?.[1] || "Limited Time",
+      variants: rawData.cta_variants || []
+    },
+    derivatives: {
+      teaser_15s: rawData.short_ad_cuts?.find((c: any) => c.duration === 15)?.scene_ids || [],
+      ad_30s: rawData.short_ad_cuts?.find((c: any) => c.duration === 30)?.scene_ids || [],
+      ad_60s: rawData.short_ad_cuts?.find((c: any) => c.duration === 60)?.scene_ids || []
+    },
+    hooks: rawData.hooks || [],
+    short_ad_cuts: rawData.short_ad_cuts || []
+  };
 };
 
 // Generate high quality thumbnails using Gemini 2.5 Flash Image
 export const generateSceneThumbnails = async (scenes: AdScene[], aspectRatio: '16:9' | '9:16'): Promise<Record<string, string>> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  const apiKey = getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   const thumbnails: Record<string, string> = {};
 
   const batchSize = 3;
@@ -153,10 +214,9 @@ export const initiateVideoRender = async (
   aspectRatio: '16:9' | '9:16'
 ): Promise<any> => {
   return withRetry(async () => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) throw new Error("Missing API Key");
-
+    const apiKey = getApiKey();
     const ai = new GoogleGenAI({ apiKey });
+    
     let imagePart = undefined;
     if (images.length > 0) {
       const base64 = await fileToBase64(images[0]);
@@ -181,9 +241,7 @@ export const initiateVideoRender = async (
 // Poll for video generation progress using the Google GenAI SDK
 export const pollVideoAdStatus = async (operation: any): Promise<{ done: boolean, videoUrl?: string, error?: string, operation?: any }> => {
   return withRetry(async () => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) return { done: true, error: "API Key missing" };
-
+    const apiKey = getApiKey();
     const ai = new GoogleGenAI({ apiKey });
     const updatedOperation = await ai.operations.getVideosOperation({ operation });
 
@@ -209,13 +267,18 @@ export const fetchVideoBlob = async (videoUrl: string): Promise<string> => {
     const response = await fetch(videoUrl);
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      // Check for 404 or specific error messages to trigger key selection
+      if (response.status === 404 || (errorData.error?.message || '').toLowerCase().includes('requested entity was not found')) {
+         triggerKeySelection();
+         throw new Error("Project or API Key invalid. Please re-select key.");
+      }
       throw new Error(errorData.error?.message || `Download failed with status ${response.status}`);
     }
     const blob = await response.blob();
     return URL.createObjectURL(blob);
   } catch (error: any) {
     if (error.message.includes('Requested entity was not found')) {
-       if ((window as any).aistudio?.openSelectKey) (window as any).aistudio.openSelectKey();
+       triggerKeySelection();
     }
     throw error;
   }
@@ -224,9 +287,7 @@ export const fetchVideoBlob = async (videoUrl: string): Promise<string> => {
 // Extend an existing video by adding 5 seconds of footage
 export const extendVideo = async (previousOperation: any, prompt: string, aspectRatio: '16:9' | '9:16'): Promise<GeneratedResult> => {
   return withRetry(async () => {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) throw new Error("Missing API Key");
-
+    const apiKey = getApiKey();
     const ai = new GoogleGenAI({ apiKey });
     
     let operation = await ai.models.generateVideos({
@@ -259,7 +320,8 @@ export const extendVideo = async (previousOperation: any, prompt: string, aspect
 // Generate high fidelity voiceover using Gemini 2.5 Flash TTS
 export const generateVoiceover = async (script: string, voiceName: VoiceName): Promise<string | null> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash-preview-tts",
       contents: [{ parts: [{ text: script }] }],
@@ -300,10 +362,10 @@ export const generatePlaceholderImage = async (
   websiteUrl: string,
   aspectRatio: '16:9' | '9:16'
 ): Promise<{ imageBytes: string; mimeType: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  const apiKey = getApiKey();
+  const ai = new GoogleGenAI({ apiKey });
   
   // Use gemini-3-pro-image-preview for high quality product shots
-  // It handles text prompts well for generation
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-image-preview',
     contents: [{ 

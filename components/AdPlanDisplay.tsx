@@ -1,30 +1,27 @@
-
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { BatchItem, AdScene } from '../types';
 import { 
-  Play, 
-  Pause, 
   Layers, 
   Mic, 
-  Tv, 
-  Music, 
   Scissors, 
   Loader2, 
-  Sparkles, 
   Activity, 
-  FileAudio, 
-  FileVideo, 
-  AlertCircle,
   Video as VideoIcon,
   RefreshCw,
   Zap,
-  Layout
+  Hash,
+  Download,
+  Play,
+  Pause,
+  CheckCircle2,
+  Type
 } from 'lucide-react';
 import { initiateVideoRender, pollVideoAdStatus, generateVoiceover, fetchVideoBlob } from '../services/geminiService';
 
 interface AdPlanDisplayProps {
   item: BatchItem;
-  onUpdateItem: (updates: Partial<BatchItem>) => void;
+  // Updated signature to support functional updates
+  onUpdateItem: (updates: Partial<BatchItem> | ((prev: BatchItem) => Partial<BatchItem>)) => void;
 }
 
 export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem }) => {
@@ -39,71 +36,84 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
   
   const activeScene = plan?.scene_map.find(s => s.scene_id === activeSceneId);
 
-  // Scene rendering handler
+  // Scene rendering handler with functional updates
   const handleRenderScene = async (sceneId: string) => {
     if (!plan) return;
-    const sceneIdx = plan.scene_map.findIndex(s => s.scene_id === sceneId);
-    if (sceneIdx === -1) return;
-
-    const scene = plan.scene_map[sceneIdx];
+    const scene = plan.scene_map.find(s => s.scene_id === sceneId);
+    if (!scene) return;
     
-    // Update state to rendering
-    const newScenes = [...plan.scene_map];
-    newScenes[sceneIdx] = { ...scene, renderStatus: 'RENDERING' };
-    onUpdateItem({ plan: { ...plan, scene_map: newScenes } });
+    // 1. Set status to RENDERING using functional update
+    onUpdateItem(prev => {
+      if (!prev.plan) return {};
+      const newScenes = prev.plan.scene_map.map(s => 
+        s.scene_id === sceneId ? { ...s, renderStatus: 'RENDERING' as const } : s
+      );
+      return { plan: { ...prev.plan, scene_map: newScenes } };
+    });
     
     setRenderLogs(prev => ({ ...prev, [sceneId]: ["Initiating cinematic synthesis..."] }));
 
     try {
-      // 1. Generate Voiceover
+      // 2. Generate Voiceover
+      setRenderLogs(prev => ({ ...prev, [sceneId]: [...(prev[sceneId] || []), "Synthesizing AI voiceover..."] }));
       const audioUrl = await generateVoiceover(scene.voiceover_text, item.data.voice);
       
-      // 2. Initiate Video - returns operation object
+      // 3. Initiate Video - returns operation object
+      setRenderLogs(prev => ({ ...prev, [sceneId]: [...(prev[sceneId] || []), "Requesting Veo 3.1 video generation..."] }));
       const videoOperation = await initiateVideoRender(scene.visual_instruction, item.data.images, item.data.aspectRatio);
       
-      // Update with polling info
-      const pollingScenes = [...newScenes];
-      pollingScenes[sceneIdx] = { 
-        ...pollingScenes[sceneIdx], 
-        renderStatus: 'POLLING', 
-        videoOperation,
-        audioUrl: audioUrl || undefined
-      };
-      onUpdateItem({ plan: { ...plan, scene_map: pollingScenes } });
+      // 4. Update with POLLING info using functional update
+      onUpdateItem(prev => {
+        if (!prev.plan) return {};
+        const newScenes = prev.plan.scene_map.map(s => 
+          s.scene_id === sceneId ? { 
+            ...s, 
+            renderStatus: 'POLLING' as const, 
+            videoOperation,
+            audioUrl: audioUrl || undefined
+          } : s
+        );
+        return { plan: { ...prev.plan, scene_map: newScenes } };
+      });
       
-      setRenderLogs(prev => ({ 
-        ...prev, 
-        [sceneId]: [...(prev[sceneId] || []), "Voiceover ready. Processing visual buffer..."] 
-      }));
-
     } catch (error: any) {
-      const failedScenes = [...newScenes];
-      failedScenes[sceneIdx] = { ...failedScenes[sceneIdx], renderStatus: 'FAILED' };
-      onUpdateItem({ plan: { ...plan, scene_map: failedScenes } });
-      alert(`Render failed: ${error.message}`);
+      // Handle failure using functional update
+      onUpdateItem(prev => {
+        if (!prev.plan) return {};
+        const newScenes = prev.plan.scene_map.map(s => 
+          s.scene_id === sceneId ? { ...s, renderStatus: 'FAILED' as const } : s
+        );
+        return { plan: { ...prev.plan, scene_map: newScenes } };
+      });
+      setRenderLogs(prev => ({ ...prev, [sceneId]: [...(prev[sceneId] || []), `Error: ${error.message}`] }));
     }
   };
 
-  // Polling logic for all POLLING scenes using the operation object
+  // Polling logic for all POLLING scenes using functional updates
   useEffect(() => {
     if (!plan) return;
-    const pollingScenes = plan.scene_map.filter(s => s.renderStatus === 'POLLING' && s.videoOperation);
     
+    const pollingScenes = plan.scene_map.filter(s => s.renderStatus === 'POLLING' && s.videoOperation);
+    if (pollingScenes.length === 0) return;
+
     const intervals = pollingScenes.map(scene => {
       const run = async () => {
         try {
           const status = await pollVideoAdStatus(scene.videoOperation);
           if (status.done) {
             if (status.videoUrl) {
-              const updatedScenes = [...plan.scene_map];
-              const idx = updatedScenes.findIndex(s => s.scene_id === scene.scene_id);
-              updatedScenes[idx] = { 
-                ...updatedScenes[idx], 
-                renderStatus: 'COMPLETED', 
-                videoUrl: status.videoUrl,
-                videoOperation: status.operation
-              };
-              onUpdateItem({ plan: { ...plan, scene_map: updatedScenes } });
+              // Update state with result using functional update to preserve latest state of other scenes
+              onUpdateItem(prev => {
+                 if (!prev.plan) return {};
+                 const newScenes = prev.plan.scene_map.map(s => s.scene_id === scene.scene_id ? {
+                     ...s,
+                     renderStatus: 'COMPLETED' as const,
+                     videoUrl: status.videoUrl,
+                     videoOperation: status.operation
+                 } : s);
+                 return { plan: { ...prev.plan, scene_map: newScenes } };
+              });
+              
               setRenderLogs(prev => ({ 
                 ...prev, 
                 [scene.scene_id]: [...(prev[scene.scene_id] || []), "Final frame consistency achieved. Playback ready."] 
@@ -112,39 +122,46 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
               throw new Error(status.error || "Unknown polling error");
             }
           } else {
-            // Add some synthetic logs to make it feel alive
+            // Add synthetic logs
             const creativeLogs = [
               "Adjusting focal depth...",
               "Simulating ray-tracing...",
               "Optimizing temporal resolution...",
-              "Filtering semantic noise..."
+              "Filtering semantic noise...",
+              "Enhancing texture details..."
             ];
-            setRenderLogs(prev => ({ 
-              ...prev, 
-              [scene.scene_id]: [...(prev[scene.scene_id] || []), creativeLogs[Math.floor(Math.random() * creativeLogs.length)]].slice(-3)
-            }));
+            const randomLog = creativeLogs[Math.floor(Math.random() * creativeLogs.length)];
             
-            // Store updated operation progress
-            const updatedScenes = [...plan.scene_map];
-            const idx = updatedScenes.findIndex(s => s.scene_id === scene.scene_id);
-            updatedScenes[idx] = { ...updatedScenes[idx], videoOperation: status.operation };
-            onUpdateItem({ plan: { ...plan, scene_map: updatedScenes } });
+            setRenderLogs(prev => {
+              const logs = prev[scene.scene_id] || [];
+              if (logs[logs.length - 1] === randomLog) return prev;
+              return { 
+                ...prev, 
+                [scene.scene_id]: [...logs, randomLog].slice(-4) 
+              };
+            });
           }
-        } catch (e) {
-           const failedScenes = [...plan.scene_map];
-           const idx = failedScenes.findIndex(s => s.scene_id === scene.scene_id);
-           failedScenes[idx] = { ...failedScenes[idx], renderStatus: 'FAILED' };
-           onUpdateItem({ plan: { ...plan, scene_map: failedScenes } });
+        } catch (e: any) {
+           onUpdateItem(prev => {
+             if (!prev.plan) return {};
+             const newScenes = prev.plan.scene_map.map(s => s.scene_id === scene.scene_id ? {
+               ...s,
+               renderStatus: 'FAILED' as const
+             } : s);
+             return { plan: { ...prev.plan, scene_map: newScenes } };
+           });
+           setRenderLogs(prev => ({ ...prev, [scene.scene_id]: [...(prev[scene.scene_id] || []), `Failed: ${e.message}`] }));
         }
       };
-      const intervalId = window.setInterval(run, 8000);
+      
+      const intervalId = window.setInterval(run, 5000);
       return intervalId;
     });
 
     return () => intervals.forEach(id => clearInterval(id));
-  }, [plan, onUpdateItem]);
+  }, [plan, onUpdateItem]); // plan in deps is acceptable as functional updates protect against stale state within the interval
 
-  // Sync Audio/Video playback for real-time monitoring
+  // Sync Audio/Video playback
   useEffect(() => {
     const v = videoRef.current;
     const a = audioRef.current;
@@ -154,7 +171,7 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
     const syncPause = () => { a.pause(); setIsPlaying(false); };
     const handleEnded = () => {
       v.currentTime = 0; a.currentTime = 0;
-      v.play().catch(() => {});
+      v.play().catch(() => {}); // Loop
     };
 
     v.addEventListener('play', syncPlay);
@@ -167,7 +184,7 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
     };
   }, [activeSceneId, activeScene?.videoUrl]);
 
-  // Robust download handler
+  // Download handler
   const handleDownloadVideo = async () => {
     if (!activeScene?.videoUrl || isDownloading) return;
     
@@ -184,7 +201,7 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
         URL.revokeObjectURL(blobUrl);
       }, 100);
     } catch (error: any) {
-      alert(`Download failed: ${error.message}. Ensure your project has billing enabled for Veo.`);
+      alert(`Download failed: ${error.message}.`);
     } finally {
       setIsDownloading(false);
     }
@@ -193,220 +210,237 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
   if (!plan) return null;
 
   return (
-    <div className="space-y-12 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+    <div className="space-y-8 pb-24 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      
+      {/* Top Metadata Bar */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="md:col-span-3 bg-slate-900/60 p-6 rounded-[32px] border border-slate-800 backdrop-blur-md flex items-center justify-between">
+           <div className="flex items-center gap-4">
+              <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400 border border-indigo-500/20"><Activity size={20}/></div>
+              <div>
+                <h3 className="text-white font-bold text-sm">Campaign Strategy</h3>
+                <div className="flex items-center gap-2 mt-1">
+                  {plan.hooks && plan.hooks.length > 0 && (
+                     <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">
+                       {plan.hooks.length} Hooks Generated
+                     </span>
+                  )}
+                  {plan.job_id && (
+                    <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1">
+                      <Hash size={10}/> {plan.job_id.slice(0, 8)}
+                    </span>
+                  )}
+                </div>
+              </div>
+           </div>
+           <div className="hidden md:block text-right">
+              <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Total Duration</div>
+              <div className="text-xl font-black text-white">{plan.scene_map.reduce((acc, s) => acc + s.duration_seconds, 0)}s</div>
+           </div>
+        </div>
+
+        <div className="bg-slate-900/60 p-6 rounded-[32px] border border-slate-800 backdrop-blur-md flex flex-col justify-center">
+           <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-2">
+             <Scissors size={12}/> Shorts Cuts
+           </div>
+           <div className="flex gap-2">
+             {plan.derivatives.teaser_15s.length > 0 && <span className="px-2 py-1 bg-purple-500/20 text-purple-300 text-[10px] font-bold rounded-lg border border-purple-500/30">15s Teaser</span>}
+             {plan.derivatives.ad_30s.length > 0 && <span className="px-2 py-1 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold rounded-lg border border-indigo-500/30">30s Ad</span>}
+           </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Storyboard Panel */}
-        <div className="lg:col-span-2 space-y-8">
-          <div className="bg-slate-900/60 p-8 md:p-12 rounded-[56px] border border-slate-800 shadow-2xl backdrop-blur-3xl">
-            <div className="flex items-center justify-between mb-10">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400 border border-indigo-500/20"><Layers size={24}/></div>
-                <div>
-                  <h3 className="text-3xl font-black tracking-tighter text-white">Ad Storyboard</h3>
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mt-1">Modular Campaign Architecture</p>
-                </div>
-              </div>
-              <div className="hidden md:flex flex-col items-end">
-                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-2">
-                  <Sparkles size={12}/> Strategy Fully Synthesized
-                </span>
-                <span className="text-[8px] text-slate-600 font-bold">GEMINI 3 PRO ENGINE ACTIVE</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {plan.scene_map.map((scene, idx) => (
-                <div 
-                  key={scene.scene_id} 
-                  onClick={() => setActiveSceneId(scene.scene_id)}
-                  className={`group relative p-6 rounded-[32px] border transition-all cursor-pointer ${
-                    activeSceneId === scene.scene_id 
-                      ? 'bg-slate-800/80 border-indigo-500/40 shadow-xl ring-1 ring-indigo-500/20' 
-                      : 'bg-slate-950/40 hover:bg-slate-900/60 border-slate-800/50'
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em]">Scene {idx + 1} • {scene.duration_seconds}s</span>
-                    <div className="flex items-center gap-2">
-                      <span className={`px-2 py-0.5 rounded-[6px] text-[8px] font-black uppercase ${
-                        scene.scene_goal === 'hook' ? 'bg-red-500/10 text-red-400' :
-                        scene.scene_goal === 'educate' ? 'bg-blue-500/10 text-blue-400' :
-                        'bg-emerald-500/10 text-emerald-400'
-                      }`}>
-                        {scene.scene_goal}
-                      </span>
-                      {scene.renderStatus === 'COMPLETED' && <Zap size={10} className="text-yellow-400 fill-yellow-400" />}
-                    </div>
-                  </div>
-                  
-                  <div className="mb-4 aspect-video rounded-2xl overflow-hidden border border-slate-800/50 bg-black group-hover:border-indigo-500/30 transition-colors">
-                    {scene.renderStatus === 'COMPLETED' && scene.videoUrl ? (
-                      <video src={scene.videoUrl} muted className="w-full h-full object-cover" />
-                    ) : thumbnails?.[scene.scene_id] ? (
-                      <img src={thumbnails[scene.scene_id]} className="w-full h-full object-cover grayscale-[0.5] group-hover:grayscale-0 transition-all duration-700" alt={scene.scene_title} />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-slate-950">
-                        <VideoIcon size={24} className="text-slate-900" />
-                      </div>
-                    )}
-                  </div>
-
-                  <h4 className="text-white font-black text-sm mb-2 line-clamp-1">{scene.scene_title}</h4>
-                  <p className="text-slate-500 text-[11px] leading-relaxed mb-4 line-clamp-2 italic">"{scene.voiceover_text}"</p>
-                  
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-900/50 mt-auto">
-                    {scene.renderStatus === 'COMPLETED' ? (
-                       <span className="text-[9px] font-black text-emerald-400 uppercase tracking-widest flex items-center gap-1.5"><Zap size={10}/> Render Ready</span>
-                    ) : scene.renderStatus === 'RENDERING' || scene.renderStatus === 'POLLING' ? (
-                       <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1.5 animate-pulse"><Loader2 size={10} className="animate-spin"/> Producing...</span>
-                    ) : (
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleRenderScene(scene.scene_id); }}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl text-[9px] font-black uppercase transition-all border border-indigo-500/20"
-                      >
-                        <RefreshCw size={10} /> Generate Cinematic Shot
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
+        {/* Left Column: Scene List */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="flex items-center justify-between px-2">
+            <h3 className="text-lg font-black text-white flex items-center gap-2">
+              <Layers size={18} className="text-indigo-500"/> Scene Map
+            </h3>
+            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{plan.scene_map.length} Scenes</span>
           </div>
 
-          {/* Strategy Meta */}
-          <div className="bg-slate-900/60 p-8 rounded-[56px] border border-slate-800 grid grid-cols-1 md:grid-cols-2 gap-10">
-             <div className="space-y-4">
-               <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Music size={14} className="text-indigo-400"/> Audio Direction</h5>
-               <p className="text-white text-sm font-bold">{plan.audio_strategy.voice_style}</p>
-               <div className="p-3 bg-black/40 rounded-xl border border-slate-800">
-                  <p className="text-slate-500 text-[10px] leading-relaxed">Ambient Track: <span className="text-indigo-300 italic">{plan.audio_strategy.music_suggestion}</span></p>
-               </div>
-             </div>
-             <div className="space-y-4">
-               <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Scissors size={14} className="text-indigo-400"/> AI Derivative Cuts</h5>
-               <div className="flex flex-wrap gap-2">
-                 {Object.keys(plan.derivatives).map(d => (
-                   <span key={d} className="px-4 py-2 bg-slate-950 rounded-xl text-[9px] font-black text-slate-400 border border-slate-800 hover:border-indigo-500/30 transition-colors uppercase tracking-widest">
-                     {d.replace('_', ' ')}
-                   </span>
-                 ))}
-               </div>
-             </div>
+          <div className="space-y-4 max-h-[800px] overflow-y-auto pr-2 custom-scrollbar">
+            {plan.scene_map.map((scene, idx) => (
+              <div 
+                key={scene.scene_id} 
+                onClick={() => setActiveSceneId(scene.scene_id)}
+                className={`group relative p-5 rounded-[28px] border transition-all cursor-pointer ${
+                  activeSceneId === scene.scene_id 
+                    ? 'bg-slate-800/80 border-indigo-500/50 shadow-2xl ring-1 ring-indigo-500/20' 
+                    : 'bg-slate-950/40 hover:bg-slate-900/60 border-slate-800/50'
+                }`}
+              >
+                <div className="flex gap-5">
+                  {/* Thumbnail / Video Preview */}
+                  <div className="w-32 aspect-video rounded-xl overflow-hidden bg-black border border-slate-800 flex-shrink-0 relative">
+                    {scene.renderStatus === 'COMPLETED' && scene.videoUrl ? (
+                      <video src={scene.videoUrl} className="w-full h-full object-cover" muted />
+                    ) : thumbnails?.[scene.scene_id] ? (
+                      <img src={thumbnails[scene.scene_id]} className="w-full h-full object-cover opacity-80" alt="" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-900 text-slate-700">
+                        <VideoIcon size={20} />
+                      </div>
+                    )}
+                    
+                    {/* Status Badge Overlay */}
+                    <div className="absolute top-1 right-1">
+                      {scene.renderStatus === 'COMPLETED' ? (
+                        <div className="bg-emerald-500 text-white p-0.5 rounded-full"><CheckCircle2 size={10} /></div>
+                      ) : (scene.renderStatus === 'RENDERING' || scene.renderStatus === 'POLLING') ? (
+                        <div className="bg-indigo-500 text-white p-0.5 rounded-full animate-spin"><Loader2 size={10} /></div>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-grow min-w-0">
+                    <div className="flex justify-between items-start mb-1">
+                      <h4 className={`text-sm font-bold truncate ${activeSceneId === scene.scene_id ? 'text-white' : 'text-slate-300'}`}>
+                        {idx + 1}. {scene.scene_title}
+                      </h4>
+                      <span className="text-[9px] font-mono text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded">{scene.duration_seconds}s</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 line-clamp-2 mb-3 leading-relaxed">
+                      {scene.visual_instruction}
+                    </p>
+                    
+                    <div className="flex items-center justify-between">
+                       <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md ${
+                         scene.scene_goal === 'hook' ? 'bg-pink-500/10 text-pink-400' :
+                         scene.scene_goal === 'convert' ? 'bg-emerald-500/10 text-emerald-400' :
+                         'bg-indigo-500/10 text-indigo-400'
+                       }`}>
+                         {scene.scene_goal}
+                       </span>
+
+                       {scene.renderStatus === 'IDLE' || !scene.renderStatus ? (
+                         <button 
+                           onClick={(e) => { e.stopPropagation(); handleRenderScene(scene.scene_id); }}
+                           className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[9px] font-bold uppercase transition-all shadow-lg shadow-indigo-500/20 active:scale-95"
+                         >
+                           <Zap size={10} /> Generate
+                         </button>
+                       ) : scene.renderStatus === 'FAILED' ? (
+                         <button 
+                           onClick={(e) => { e.stopPropagation(); handleRenderScene(scene.scene_id); }}
+                           className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg text-[9px] font-bold uppercase transition-all border border-red-500/20"
+                         >
+                           <RefreshCw size={10} /> Retry
+                         </button>
+                       ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Console Panel */}
-        <div className="space-y-8">
-          <div className="bg-slate-900/60 p-8 rounded-[56px] border border-slate-800 shadow-2xl h-fit sticky top-28 backdrop-blur-3xl">
-            <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-6 flex items-center gap-3">
-              <Activity size={14} className="text-indigo-400 animate-pulse" /> Production Console
-            </h3>
+        {/* Right Column: Active Scene Detail */}
+        <div className="lg:col-span-1">
+          <div className="sticky top-24 space-y-6">
             
-            <div className={`relative bg-black rounded-[40px] overflow-hidden border border-slate-800 shadow-inner ${item.data.aspectRatio === '9:16' ? 'aspect-[9/16]' : 'aspect-video'}`}>
-               {activeScene?.videoUrl ? (
+            {/* Player */}
+            <div className="bg-black rounded-[32px] overflow-hidden border border-slate-800 shadow-2xl relative group aspect-[9/16] max-h-[600px]">
+               {activeScene?.renderStatus === 'COMPLETED' && activeScene.videoUrl ? (
                  <>
                    <video 
-                     ref={videoRef} 
+                     ref={videoRef}
                      src={activeScene.videoUrl} 
-                     className="w-full h-full object-cover" 
-                     loop 
-                     playsInline 
-                     autoPlay 
-                     muted={false}
-                     crossOrigin="anonymous"
+                     className="w-full h-full object-cover"
+                     playsInline
+                     loop
                    />
                    {activeScene.audioUrl && <audio ref={audioRef} src={activeScene.audioUrl} />}
-                   <div className="absolute top-6 left-6 flex items-center gap-2">
-                      <div className="px-3 py-1 bg-black/60 backdrop-blur-md rounded-lg border border-white/10 flex items-center gap-2">
-                         <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                         <span className="text-[8px] font-black text-white uppercase tracking-widest">Master Preview</span>
-                      </div>
+                   
+                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30 backdrop-blur-[2px]">
+                      <button 
+                        onClick={() => {
+                          if (videoRef.current?.paused) videoRef.current.play();
+                          else videoRef.current?.pause();
+                        }}
+                        className="p-4 bg-white/10 hover:bg-white/20 rounded-full backdrop-blur-md border border-white/20 transition-transform active:scale-95"
+                      >
+                        {isPlaying ? <Pause className="text-white fill-white" size={24}/> : <Play className="text-white fill-white ml-1" size={24}/>}
+                      </button>
                    </div>
-                   <div className="absolute bottom-8 left-0 right-0 text-center px-6">
-                      <span className="px-6 py-3 bg-indigo-600/95 text-white font-black text-xs md:text-sm rounded-2xl uppercase shadow-2xl backdrop-blur-sm border border-indigo-400/20 inline-block max-w-full truncate">
-                        {activeScene.on_screen_text}
-                      </span>
-                   </div>
+
+                   <button 
+                      onClick={handleDownloadVideo}
+                      disabled={isDownloading}
+                      className="absolute bottom-4 right-4 p-2 bg-black/60 hover:bg-indigo-600 text-white rounded-xl backdrop-blur-md border border-white/10 transition-colors"
+                    >
+                      {isDownloading ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />}
+                   </button>
                  </>
                ) : (
-                 <div className="absolute inset-0 flex flex-col items-center justify-center p-10 bg-black text-center">
-                   {activeScene?.renderStatus === 'RENDERING' || activeScene?.renderStatus === 'POLLING' ? (
-                     <div className="w-full space-y-6">
-                        <div className="w-16 h-16 mx-auto mb-4 relative">
-                           <Loader2 className="w-16 h-16 text-indigo-500 animate-spin" />
-                           <Activity className="absolute inset-0 m-auto w-6 h-6 text-indigo-400 opacity-50" />
+                 <div className="w-full h-full flex flex-col items-center justify-center p-8 text-center bg-slate-950">
+                    {activeScene?.renderStatus === 'RENDERING' || activeScene?.renderStatus === 'POLLING' ? (
+                      <>
+                        <Loader2 size={48} className="text-indigo-500 animate-spin mb-6" />
+                        <h4 className="text-white font-bold mb-2">Generating Scene</h4>
+                        <div className="space-y-1">
+                          {renderLogs[activeSceneId!]?.map((log, i) => (
+                            <p key={i} className="text-[10px] text-slate-500 font-mono animate-in fade-in slide-in-from-bottom-1">
+                              {log}
+                            </p>
+                          ))}
                         </div>
-                        <div className="space-y-2">
-                           {(renderLogs[activeScene.scene_id] || []).map((log, i) => (
-                             <div key={i} className={`text-[8px] font-mono tracking-tighter ${i === (renderLogs[activeScene.scene_id]?.length - 1) ? 'text-indigo-400' : 'text-slate-800'}`}>
-                               <span className="opacity-40">[{Math.floor(Math.random() * 9999)}]</span> {log}
-                             </div>
-                           ))}
-                        </div>
-                        <p className="text-[10px] font-black text-slate-700 uppercase tracking-widest animate-pulse">Synthesizing Scene {activeSceneId}</p>
-                     </div>
-                   ) : (
-                     <div className="opacity-30 flex flex-col items-center">
-                        <Layout className="w-12 h-12 text-slate-700 mb-4" />
-                        <p className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Select rendered scene to preview</p>
-                     </div>
-                   )}
+                      </>
+                    ) : (
+                      <>
+                         <VideoIcon size={48} className="text-slate-800 mb-4" />
+                         <p className="text-xs text-slate-600 font-medium">Select 'Generate' to create this scene</p>
+                      </>
+                    )}
                  </div>
                )}
             </div>
-            
-            <div className="mt-8 p-6 bg-slate-950/80 rounded-[32px] border border-slate-900 space-y-5">
-               <div className="flex items-center justify-between">
-                 <div className="flex items-center gap-3">
-                   <Mic size={16} className="text-indigo-400" />
-                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Dialogue Feed</span>
-                 </div>
-                 <span className="text-[9px] font-mono text-slate-700">VO-ENGINE-V2</span>
-               </div>
-               <p className="text-xs text-slate-400 leading-relaxed font-medium">
-                 {activeScene ? `"${activeScene.voiceover_text}"` : "Waiting for active module sequence..."}
-               </p>
-            </div>
 
-            <div className="mt-8 space-y-3">
-               <button 
-                 disabled={!activeScene?.videoUrl || isDownloading}
-                 onClick={(e) => { e.preventDefault(); handleDownloadVideo(); }}
-                 className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 text-white rounded-[24px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 shadow-2xl shadow-indigo-600/20 disabled:opacity-30 disabled:grayscale"
-               >
-                 {isDownloading ? <Loader2 size={18} className="animate-spin" /> : <FileVideo size={18} />} 
-                 {isDownloading ? 'Downloading...' : 'Download Shot (MP4)'}
-               </button>
-               <button 
-                 disabled={!activeScene?.audioUrl}
-                 onClick={() => {
-                   if (!activeScene?.audioUrl) return;
-                   const a = document.createElement('a');
-                   a.href = activeScene.audioUrl;
-                   a.download = `${item.data.name}-vo-${activeSceneId}.wav`;
-                   a.click();
-                 }}
-                 className="w-full py-4 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded-[24px] font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 disabled:opacity-30"
-               >
-                 <FileAudio size={16} /> Export Voice Asset
-               </button>
-            </div>
-          </div>
-          
-          <div className="bg-indigo-600/5 p-8 rounded-[40px] border border-indigo-500/10 backdrop-blur-sm">
-            <div className="flex items-center gap-3 mb-4">
-              <Zap size={16} className="text-yellow-400 fill-yellow-400" />
-              <h4 className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Conversion Strategy</h4>
-            </div>
-            <p className="text-white text-sm font-black mb-4 leading-tight">{plan.cta_block.primary}</p>
-            <div className="flex flex-wrap gap-2">
-              {plan.cta_block.variants.map(v => (
-                <span key={v} className="px-3 py-1.5 bg-slate-900/60 rounded-xl text-[9px] font-bold text-slate-500 border border-slate-800 uppercase tracking-wider">{v}</span>
-              ))}
-            </div>
+            {/* Script & Details */}
+            {activeScene && (
+              <div className="bg-slate-900/60 p-6 rounded-[32px] border border-slate-800 backdrop-blur-md space-y-5">
+                 <div>
+                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-2">
+                     <Mic size={10} className="text-indigo-500"/> Voiceover Script
+                   </label>
+                   <p className="text-sm text-slate-300 italic leading-relaxed">
+                     "{activeScene.voiceover_text}"
+                   </p>
+                 </div>
+                 
+                 <div>
+                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-2">
+                     <Type size={10} className="text-purple-500"/> On-Screen Text
+                   </label>
+                   <p className="text-xs text-white font-bold bg-slate-950 p-3 rounded-xl border border-slate-800">
+                     {activeScene.on_screen_text}
+                   </p>
+                 </div>
+
+                 {plan.hooks && plan.hooks.length > 0 && (
+                   <div>
+                     <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2 mb-2">
+                       <Zap size={10} className="text-yellow-500"/> Viral Hooks
+                     </label>
+                     <div className="flex flex-wrap gap-2">
+                       {plan.hooks.slice(0, 2).map((hook, i) => (
+                         <span key={i} className="text-[9px] text-slate-400 bg-slate-800/50 px-2 py-1 rounded-lg border border-slate-700/50">
+                           {hook}
+                         </span>
+                       ))}
+                     </div>
+                   </div>
+                 )}
+              </div>
+            )}
+
           </div>
         </div>
+
       </div>
     </div>
   );
