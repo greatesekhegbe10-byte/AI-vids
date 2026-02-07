@@ -95,7 +95,7 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
            )}
 
            <div className={`absolute inset-0 flex items-center justify-center transition-all ${(!isPlaying || showMobileControls) ? 'opacity-100' : 'opacity-0'}`}>
-              <button onPointerDown={togglePlay} className="bg-black/40 p-10 rounded-full backdrop-blur-xl border border-white/20 active:scale-90">
+              <button onClick={togglePlay} className="bg-black/40 p-10 rounded-full backdrop-blur-xl border border-white/20 active:scale-90">
                 {isPlaying ? <Pause className="w-12 h-12 text-white fill-white" /> : <Play className="w-12 h-12 text-white fill-white ml-1" />}
               </button>
            </div>
@@ -123,18 +123,18 @@ export const VideoEditor: React.FC<VideoEditorProps> = ({ result, onUpdate, aspe
           <div className="space-y-4">
             <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2"><Type size={14} className="text-indigo-500"/> Overlay Text</label>
             <input type="text" value={overlayText} onChange={(e) => setOverlayText(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-sm text-white focus:ring-2 focus:ring-indigo-500" />
-            <button onPointerDown={() => setShowOverlay(!showOverlay)} className={`w-full py-4 rounded-2xl font-bold text-xs transition-all ${showOverlay ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+            <button onClick={() => setShowOverlay(!showOverlay)} className={`w-full py-4 rounded-2xl font-bold text-xs transition-all ${showOverlay ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
               {showOverlay ? 'HIDE OVERLAY' : 'SHOW OVERLAY'}
             </button>
           </div>
         </div>
 
         <div className="mt-auto space-y-4">
-           <button onPointerDown={handleExtend} disabled={isExtending} className="w-full py-4 bg-slate-800 text-white rounded-2xl font-bold flex items-center justify-center gap-3 border border-slate-700 disabled:opacity-50">
+           <button onClick={handleExtend} disabled={isExtending} className="w-full py-4 bg-slate-800 text-white rounded-2xl font-bold flex items-center justify-center gap-3 border border-slate-700 disabled:opacity-50">
              {isExtending ? <Loader2 className="animate-spin text-indigo-400" size={20}/> : <Maximize size={20} className="text-indigo-400"/>}
              Extend Video (+5s)
            </button>
-           <button onPointerDown={handleDownload} disabled={isDownloading} className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-black flex items-center justify-center gap-3 shadow-2xl disabled:opacity-70">
+           <button onClick={handleDownload} disabled={isDownloading} className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-black flex items-center justify-center gap-3 shadow-2xl disabled:opacity-70">
              {isDownloading ? <Loader2 size={22} className="animate-spin" /> : <Download size={22} />}
              EXPORT VIDEO
            </button>

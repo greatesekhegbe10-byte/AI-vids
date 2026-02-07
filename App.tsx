@@ -172,7 +172,7 @@ const App: React.FC = () => {
                  <Key className="w-16 h-16 text-red-500/40 mb-6" />
                  <h3 className="text-xl font-black text-red-400 uppercase tracking-widest">Synthesis Interrupted</h3>
                  <p className="text-sm text-slate-600 mt-2">{selectedItem.error}</p>
-                 <button onPointerDown={() => handleUpdateItem(selectedItem.id, { status: 'PENDING' })} className="mt-8 px-8 py-3 bg-red-500/10 text-red-400 rounded-xl font-black text-xs uppercase border border-red-500/20">Retry Production</button>
+                 <button onClick={() => handleUpdateItem(selectedItem.id, { status: 'PENDING' })} className="mt-8 px-8 py-3 bg-red-500/10 text-red-400 rounded-xl font-black text-xs uppercase border border-red-500/20">Retry Production</button>
               </div>
             ) : (
               <div className="flex flex-col items-center py-32 bg-slate-900/40 rounded-[56px] border border-slate-800/60 backdrop-blur-3xl">

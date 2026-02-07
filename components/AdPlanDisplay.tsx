@@ -219,7 +219,7 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
               {plan.scene_map.map((scene, idx) => (
                 <div 
                   key={scene.scene_id} 
-                  onPointerDown={() => setActiveSceneId(scene.scene_id)}
+                  onClick={() => setActiveSceneId(scene.scene_id)}
                   className={`group relative p-6 rounded-[32px] border transition-all cursor-pointer ${
                     activeSceneId === scene.scene_id 
                       ? 'bg-slate-800/80 border-indigo-500/40 shadow-xl ring-1 ring-indigo-500/20' 
@@ -262,7 +262,7 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
                        <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1.5 animate-pulse"><Loader2 size={10} className="animate-spin"/> Producing...</span>
                     ) : (
                       <button 
-                        onPointerDown={(e) => { e.stopPropagation(); handleRenderScene(scene.scene_id); }}
+                        onClick={(e) => { e.stopPropagation(); handleRenderScene(scene.scene_id); }}
                         className="w-full flex items-center justify-center gap-2 py-2.5 bg-indigo-600/10 hover:bg-indigo-600 text-indigo-400 hover:text-white rounded-xl text-[9px] font-black uppercase transition-all border border-indigo-500/20"
                       >
                         <RefreshCw size={10} /> Generate Cinematic Shot
@@ -372,7 +372,7 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
             <div className="mt-8 space-y-3">
                <button 
                  disabled={!activeScene?.videoUrl || isDownloading}
-                 onPointerDown={(e) => { e.preventDefault(); handleDownloadVideo(); }}
+                 onClick={(e) => { e.preventDefault(); handleDownloadVideo(); }}
                  className="w-full py-5 bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 text-white rounded-[24px] font-black text-xs uppercase tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 shadow-2xl shadow-indigo-600/20 disabled:opacity-30 disabled:grayscale"
                >
                  {isDownloading ? <Loader2 size={18} className="animate-spin" /> : <FileVideo size={18} />} 
@@ -380,7 +380,7 @@ export const AdPlanDisplay: React.FC<AdPlanDisplayProps> = ({ item, onUpdateItem
                </button>
                <button 
                  disabled={!activeScene?.audioUrl}
-                 onPointerDown={() => {
+                 onClick={() => {
                    if (!activeScene?.audioUrl) return;
                    const a = document.createElement('a');
                    a.href = activeScene.audioUrl;

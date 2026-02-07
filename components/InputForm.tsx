@@ -1,7 +1,7 @@
 
 import React, { useRef, useState } from 'react';
 import { ProductData, VoiceName } from '../types';
-import { Upload, Globe, Wand2, ImageIcon, Loader2, Target, Zap, Layout, Clock, Trash2, Plus } from './Icons';
+import { Upload, Globe, Wand2, ImageIcon, Loader2, Target, Zap, Layout, Clock, Trash2, Plus, Type, Mic, Layers, Activity } from './Icons';
 import { generatePlaceholderImage } from '../services/geminiService';
 
 interface InputFormProps {
@@ -18,32 +18,16 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
   const [goal, setGoal] = useState<ProductData['goal']>('SALES');
   const [tone, setTone] = useState<ProductData['tone']>('PROFESSIONAL');
   const [platform, setPlatform] = useState<ProductData['platform']>('TIKTOK');
-  const [maxDuration, setMaxDuration] = useState(10);
+  const [maxDuration, setMaxDuration] = useState(15);
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('9:16');
+  const [voice, setVoice] = useState<VoiceName>('Fenrir');
   const [images, setImages] = useState<File[]>([]);
-  const [aiGeneratingImage, setAiGeneratingImage] = useState(false);
-  const [voice, setVoice] = useState<VoiceName>('Kore');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleAiGenerateImage = async () => {
-    if (!name || !description) return alert("Enter Product Name and Description first.");
-    setAiGeneratingImage(true);
-    try {
-      const result = await generatePlaceholderImage(name, description, aspectRatio);
-      const byteString = atob(result.imageBytes);
-      const ab = new ArrayBuffer(byteString.length);
-      const ia = new Uint8Array(ab);
-      for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-      const file = new File([new Blob([ab], { type: result.mimeType })], `${name}-ai-${Date.now()}.png`, { type: result.mimeType });
-      setImages(prev => [...prev, file].slice(0, 5));
-    } catch (e) { alert("AI visual failed."); } finally { setAiGeneratingImage(false); }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const newFiles = Array.from(e.target.files);
-      setImages(prev => [...prev, ...newFiles].slice(0, 5));
+      setImages(prev => [...prev, ...Array.from(e.target.files!)]);
     }
   };
 
@@ -51,103 +35,268 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleGenerateImage = async () => {
+    if (!name || !description) return alert("Please enter product name and description first");
+    try {
+      // Placeholder for generating synthetic image logic if needed directly in form
+      // detailed implementation would go here or triggered via service
+      alert("Synthetic image generation coming in v2");
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!name || !description) return;
+    
     onSubmit({
       id: crypto.randomUUID(),
-      name, websiteUrl, description, targetAudience, slogan,
-      goal, tone, platform, maxDuration,
-      images, aspectRatio, voice
+      name,
+      websiteUrl,
+      description,
+      targetAudience,
+      slogan,
+      goal,
+      tone,
+      platform,
+      maxDuration,
+      images,
+      aspectRatio,
+      voice
     });
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto bg-slate-900/80 border border-slate-800 p-6 md:p-10 rounded-[48px] shadow-3xl backdrop-blur-3xl pointer-events-auto">
-      <div className="mb-8">
-        <h2 className="text-3xl font-black text-white tracking-tighter flex items-center gap-3">
-          <Zap className="text-yellow-400" /> Modular Ad Studio
-        </h2>
-        <p className="text-slate-500 text-xs mt-1 font-bold uppercase tracking-widest">Autonomous Production Engine</p>
-      </div>
-      
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Product Name" className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700" />
-          <div className="relative">
-            <Globe className="absolute left-4 top-5 w-4 h-4 text-slate-700" />
-            <input value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="brand.com" className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-11 pr-4 py-4 text-white placeholder:text-slate-700" />
+    <form onSubmit={handleSubmit} className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
+      <div className="bg-slate-900/60 p-8 md:p-10 rounded-[48px] border border-slate-800/60 shadow-2xl backdrop-blur-sm">
+        <div className="flex items-center gap-4 mb-8">
+           <div className="p-3 bg-indigo-500/10 rounded-2xl text-indigo-400 border border-indigo-500/20">
+             <Target size={24} />
+           </div>
+           <div>
+             <h3 className="text-xl font-black text-white">Campaign Intelligence</h3>
+             <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mt-1">Product & Brand Data</p>
+           </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-3">
+            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3 flex items-center gap-2">
+              <Type size={12} className="text-indigo-500"/> Product Name
+            </label>
+            <input 
+              type="text" 
+              value={name} 
+              onChange={(e) => setName(e.target.value)} 
+              placeholder="e.g. Lumina Smart Watch"
+              className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl px-5 py-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+            />
+          </div>
+          
+          <div className="space-y-3">
+             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3 flex items-center gap-2">
+               <Globe size={12} className="text-indigo-500"/> Website URL
+             </label>
+             <input 
+              type="url" 
+              value={websiteUrl} 
+              onChange={(e) => setWebsiteUrl(e.target.value)} 
+              placeholder="https://..."
+              className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl px-5 py-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+            />
+          </div>
+
+          <div className="md:col-span-2 space-y-3">
+             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3 flex items-center gap-2">
+               <Layout size={12} className="text-indigo-500"/> Product Description & key selling points
+             </label>
+             <textarea 
+              value={description} 
+              onChange={(e) => setDescription(e.target.value)} 
+              placeholder="Describe your product features, benefits, and unique value proposition..."
+              rows={3}
+              className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl px-5 py-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all resize-none"
+            />
+          </div>
+
+          <div className="space-y-3">
+             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3 flex items-center gap-2">
+               <Activity size={12} className="text-indigo-500"/> Target Audience
+             </label>
+             <input 
+              type="text" 
+              value={targetAudience} 
+              onChange={(e) => setTargetAudience(e.target.value)} 
+              placeholder="e.g. Tech enthusiasts, 25-40"
+              className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl px-5 py-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+            />
+          </div>
+          
+          <div className="space-y-3">
+             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3 flex items-center gap-2">
+               <Zap size={12} className="text-indigo-500"/> Campaign Slogan
+             </label>
+             <input 
+              type="text" 
+              value={slogan} 
+              onChange={(e) => setSlogan(e.target.value)} 
+              placeholder="e.g. Future on your wrist"
+              className="w-full bg-slate-950/50 border border-slate-800 rounded-2xl px-5 py-4 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 transition-all"
+            />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="relative">
-            <Target className="absolute left-4 top-5 w-4 h-4 text-slate-700" />
-            <input value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} required placeholder="Target Audience" className="w-full bg-slate-950 border border-slate-800 rounded-2xl pl-11 pr-4 py-4 text-white placeholder:text-slate-700" />
-          </div>
-          <input value={slogan} onChange={(e) => setSlogan(e.target.value)} placeholder="Slogan / Tagline" className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-white placeholder:text-slate-700" />
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <select value={goal} onChange={(e) => setGoal(e.target.value as any)} className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300">
-            <option value="SALES">SALES</option><option value="SIGNUPS">SIGNUPS</option><option value="AWARENESS">AWARENESS</option>
-          </select>
-          <select value={tone} onChange={(e) => setTone(e.target.value as any)} className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300">
-            <option value="PROFESSIONAL">PROFESSIONAL</option><option value="LUXURY">LUXURY</option><option value="ENERGETIC">ENERGETIC</option><option value="TECHY">TECHY</option>
-          </select>
-          <select value={platform} onChange={(e) => setPlatform(e.target.value as any)} className="bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs font-bold text-slate-300">
-            <option value="TIKTOK">TIKTOK</option><option value="INSTAGRAM">INSTAGRAM</option><option value="YOUTUBE">YOUTUBE</option>
-          </select>
-          <div className="relative">
-            <Clock className="absolute left-3 top-3 w-3 h-3 text-slate-600" />
-            <input type="number" value={maxDuration} onChange={(e) => setMaxDuration(parseInt(e.target.value))} className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-2 py-3 text-xs font-bold text-white" min="1" max="10" />
-          </div>
-        </div>
-
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} required placeholder="Provide product details... We will analyze and generate the 10-minute sequence." rows={4} className="w-full bg-slate-950 border border-slate-800 rounded-[28px] px-5 py-4 text-white placeholder:text-slate-700" />
-
-        <div className="grid grid-cols-2 gap-4">
-          <button type="button" onPointerDown={() => setAspectRatio(aspectRatio === '16:9' ? '9:16' : '16:9')} className="bg-slate-950 border border-slate-800 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase text-indigo-400 py-4">
-            <Layout size={14} /> {aspectRatio} Aspect
-          </button>
-          <button type="button" disabled={aiGeneratingImage} onPointerDown={handleAiGenerateImage} className="bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 rounded-2xl flex items-center justify-center gap-2 font-black text-[10px] uppercase py-4">
-            {aiGeneratingImage ? <Loader2 className="animate-spin" size={14} /> : <Wand2 size={14} />} AI Photo
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          <label className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-            <ImageIcon size={14} /> Product Assets (Max 5)
+        <div className="mt-8 space-y-3">
+          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3 flex items-center gap-2">
+            <ImageIcon size={12} className="text-indigo-500"/> Product Imagery
           </label>
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+          
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <button 
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="aspect-square rounded-2xl border border-dashed border-slate-700 hover:border-indigo-500/50 bg-slate-950/30 hover:bg-slate-900 flex flex-col items-center justify-center gap-2 transition-all group"
+            >
+              <div className="p-3 bg-slate-900 rounded-full group-hover:scale-110 transition-transform">
+                <Upload size={16} className="text-indigo-400" />
+              </div>
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Upload</span>
+            </button>
+            
             {images.map((file, idx) => (
-              <div key={idx} className="relative aspect-square bg-slate-950 border border-slate-800 rounded-xl overflow-hidden group">
-                <img src={URL.createObjectURL(file)} className="w-full h-full object-cover" alt={`Product ${idx}`} />
+              <div key={idx} className="relative aspect-square rounded-2xl overflow-hidden border border-slate-800 group">
+                <img src={URL.createObjectURL(file)} alt="preview" className="w-full h-full object-cover" />
                 <button 
-                  type="button" 
+                  type="button"
                   onClick={() => removeImage(idx)}
-                  className="absolute inset-0 bg-red-600/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-all"
+                  className="absolute top-2 right-2 p-1.5 bg-black/60 text-white rounded-full hover:bg-red-500/80 transition-colors backdrop-blur-sm opacity-0 group-hover:opacity-100"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={12} />
                 </button>
               </div>
             ))}
-            {images.length < 5 && (
-              <button 
-                type="button" 
-                onClick={() => fileInputRef.current?.click()}
-                className="aspect-square border-2 border-dashed border-slate-800 rounded-xl text-slate-700 hover:border-indigo-500 hover:text-indigo-400 bg-slate-950/40 flex items-center justify-center"
-              >
-                <Plus size={20} />
-              </button>
-            )}
           </div>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleImageUpload} 
+            className="hidden" 
+            multiple 
+            accept="image/*" 
+          />
         </div>
-        <input type="file" ref={fileInputRef} onChange={handleFileChange} multiple accept="image/*" className="hidden" />
+      </div>
 
-        <button type="submit" disabled={isProcessing} className="w-full py-6 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black rounded-[28px] shadow-2xl active:scale-95 uppercase tracking-widest text-xs border border-indigo-400/20">
-          {isProcessing ? 'Analyzing Brand...' : 'Engineer Modular Ad Strategy'}
-        </button>
-      </form>
-    </div>
+      <div className="bg-slate-900/60 p-8 md:p-10 rounded-[48px] border border-slate-800/60 shadow-2xl backdrop-blur-sm">
+        <div className="flex items-center gap-4 mb-8">
+           <div className="p-3 bg-purple-500/10 rounded-2xl text-purple-400 border border-purple-500/20">
+             <Layers size={24} />
+           </div>
+           <div>
+             <h3 className="text-xl font-black text-white">Creative Configuration</h3>
+             <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mt-1">Format & Style Specs</p>
+           </div>
+        </div>
+
+        <div className="space-y-8">
+           {/* Aspect Ratio & Platform */}
+           <div className="space-y-4">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3">Format</label>
+              <div className="flex p-1 bg-slate-950 rounded-2xl border border-slate-800">
+                {(['TIKTOK', 'INSTAGRAM', 'YOUTUBE'] as const).map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPlatform(p)}
+                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${platform === p ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+              <div className="flex p-1 bg-slate-950 rounded-2xl border border-slate-800">
+                {(['9:16', '16:9'] as const).map(r => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setAspectRatio(r)}
+                    className={`flex-1 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${aspectRatio === r ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                  >
+                    {r} Aspect
+                  </button>
+                ))}
+              </div>
+           </div>
+
+           {/* Tone & Goal */}
+           <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3">Tone</label>
+                <select 
+                  value={tone}
+                  onChange={(e) => setTone(e.target.value as any)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none"
+                >
+                  <option value="PROFESSIONAL">Professional</option>
+                  <option value="ENERGETIC">Energetic</option>
+                  <option value="LUXURY">Luxury</option>
+                  <option value="FUN">Fun & Quirky</option>
+                  <option value="TECHY">Tech-Forward</option>
+                </select>
+              </div>
+              <div className="space-y-3">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3">Goal</label>
+                <select 
+                  value={goal}
+                  onChange={(e) => setGoal(e.target.value as any)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl px-5 py-4 text-xs font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50 appearance-none"
+                >
+                  <option value="SALES">Drive Sales</option>
+                  <option value="AWARENESS">Brand Awareness</option>
+                  <option value="SIGNUPS">User Signups</option>
+                </select>
+              </div>
+           </div>
+           
+           {/* Voice Selection */}
+           <div className="space-y-3">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-3 flex items-center gap-2">
+                <Mic size={12} className="text-indigo-500"/> AI Voice Talent
+              </label>
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                {(['Fenrir', 'Kore', 'Puck', 'Charon', 'Zephyr'] as VoiceName[]).map(v => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setVoice(v)}
+                    className={`flex-shrink-0 px-5 py-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${voice === v ? 'bg-indigo-500/20 border-indigo-500 text-indigo-300' : 'bg-slate-950 border-slate-800 text-slate-500 hover:border-slate-600'}`}
+                  >
+                    {v}
+                  </button>
+                ))}
+              </div>
+           </div>
+        </div>
+      </div>
+
+      <button 
+        type="submit" 
+        disabled={isProcessing}
+        className="w-full py-6 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 bg-[length:200%_auto] hover:bg-right transition-all duration-500 text-white rounded-[32px] font-black text-sm uppercase tracking-[0.2em] shadow-2xl shadow-indigo-500/30 flex items-center justify-center gap-4 active:scale-[0.98] disabled:opacity-70 disabled:grayscale"
+      >
+        {isProcessing ? (
+          <>
+            <Loader2 className="animate-spin" />
+            Creating Strategy...
+          </>
+        ) : (
+          <>
+            <Wand2 className="animate-pulse" />
+            Generate Campaign Strategy
+          </>
+        )}
+      </button>
+    </form>
   );
 };
