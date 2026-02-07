@@ -294,14 +294,41 @@ const createWavUrl = (base64PCM: string): string => {
   return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
 };
 
-export const generatePlaceholderImage = async (name: string, description: string, aspectRatio: '16:9' | '9:16'): Promise<{ imageBytes: string; mimeType: string }> => {
+export const generatePlaceholderImage = async (
+  name: string, 
+  description: string, 
+  websiteUrl: string,
+  aspectRatio: '16:9' | '9:16'
+): Promise<{ imageBytes: string; mimeType: string }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  
+  // Use gemini-3-pro-image-preview for high quality product shots
+  // It handles text prompts well for generation
   const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents: [{ parts: [{ text: `Professional commercial photography for ${name}. ${description}. Studio lighting, luxury aesthetic.` }] }],
-    config: { imageConfig: { aspectRatio } },
+    model: 'gemini-3-pro-image-preview',
+    contents: [{ 
+      parts: [{ 
+        text: `Create a high-end professional product photograph for: ${name}. 
+               Description: ${description}. 
+               Context/Website Reference: ${websiteUrl}.
+               Style: Cinematic, commercial advertising standard, studio lighting, 8k resolution.
+               Ensure the product is the central focus against a clean, premium background.` 
+      }] 
+    }],
+    config: { 
+      imageConfig: { 
+        aspectRatio: aspectRatio,
+        imageSize: '1K' 
+      } 
+    },
   });
+
   const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
-  if (part?.inlineData) return { imageBytes: part.inlineData.data, mimeType: part.inlineData.mimeType };
+  if (part?.inlineData) {
+    return { 
+      imageBytes: part.inlineData.data, 
+      mimeType: part.inlineData.mimeType 
+    };
+  }
   throw new Error("Image generation failed");
 };

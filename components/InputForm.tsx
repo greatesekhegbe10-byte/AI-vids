@@ -22,6 +22,7 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
   const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16'>('9:16');
   const [voice, setVoice] = useState<VoiceName>('Fenrir');
   const [images, setImages] = useState<File[]>([]);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -35,14 +36,29 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
     setImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleGenerateImage = async () => {
+  const handleGenerateImage = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (!name || !description) return alert("Please enter product name and description first");
+    
+    setIsGeneratingImage(true);
     try {
-      // Placeholder for generating synthetic image logic if needed directly in form
-      // detailed implementation would go here or triggered via service
-      alert("Synthetic image generation coming in v2");
-    } catch (e) {
+      const { imageBytes, mimeType } = await generatePlaceholderImage(name, description, websiteUrl, aspectRatio);
+      
+      const byteCharacters = atob(imageBytes);
+      const byteNumbers = new Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
+      }
+      const byteArray = new Uint8Array(byteNumbers);
+      const blob = new Blob([byteArray], { type: mimeType });
+      const file = new File([blob], "ai-generated-product.png", { type: mimeType });
+      
+      setImages(prev => [...prev, file]);
+    } catch (e: any) {
       console.error(e);
+      alert("Failed to generate image. " + (e.message || ""));
+    } finally {
+      setIsGeneratingImage(false);
     }
   };
 
@@ -162,6 +178,20 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, isProcessing }) 
                 <Upload size={16} className="text-indigo-400" />
               </div>
               <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Upload</span>
+            </button>
+
+            <button 
+              type="button"
+              onClick={handleGenerateImage}
+              disabled={isGeneratingImage}
+              className="aspect-square rounded-2xl border border-dashed border-slate-700 hover:border-purple-500/50 bg-slate-950/30 hover:bg-slate-900 flex flex-col items-center justify-center gap-2 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <div className="p-3 bg-slate-900 rounded-full group-hover:scale-110 transition-transform">
+                {isGeneratingImage ? <Loader2 size={16} className="text-purple-400 animate-spin" /> : <Wand2 size={16} className="text-purple-400" />}
+              </div>
+              <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest text-center px-1">
+                {isGeneratingImage ? 'Generating...' : 'AI Generate'}
+              </span>
             </button>
             
             {images.map((file, idx) => (
