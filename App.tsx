@@ -4,17 +4,16 @@ import { Header } from './components/Header';
 import { InputForm } from './components/InputForm';
 import { BatchQueue } from './components/BatchQueue';
 import { AdPlanDisplay } from './components/AdPlanDisplay';
-import { generateAdPlan, initiateVideoRender, pollVideoAdStatus, generateVoiceover } from './services/geminiService';
-import { ProductData, BatchItem, AdPlan } from './types';
-import { Cpu, Video, Loader2, Key, ExternalLink } from 'lucide-react';
+import { generateAdPlan, generateSceneThumbnails } from './services/geminiService';
+import { ProductData, BatchItem } from './types';
+import { Cpu, Video, Loader2, Key, ExternalLink, Sparkles } from 'lucide-react';
 
 const App: React.FC = () => {
   const [queue, setQueue] = useState<BatchItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [apiKeyReady, setApiKeyReady] = useState<boolean>(true);
-  const [isQueueRunning, setIsQueueRunning] = useState(false);
+  const [isProcessingPlan, setIsProcessingPlan] = useState(false);
   
-  const pollingIntervals = useRef<Record<string, number>>({});
   const processingRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -38,29 +37,29 @@ const App: React.FC = () => {
     }
   };
 
-  const updateItemStatus = useCallback((id: string, status: BatchItem['status'], error?: string) => {
-    setQueue(prev => prev.map(i => i.id === id ? { ...i, status, error: error || i.error } : i));
-  }, []);
-
   const handleAddToQueue = (data: ProductData) => {
-    setQueue(prev => [...prev, { id: data.id, data, status: 'PENDING' }]);
+    const newItem: BatchItem = { id: data.id, data, status: 'PENDING' };
+    setQueue(prev => [...prev, newItem]);
+    if (!selectedItemId) setSelectedItemId(newItem.id);
   };
 
-  // MAIN PRODUCTION PIPELINE
+  const handleUpdateItem = useCallback((id: string, updates: Partial<BatchItem>) => {
+    setQueue(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
+  }, []);
+
+  // Effect to process the PENDING plans
   useEffect(() => {
     if (processingRef.current) return;
     
-    const processQueue = async () => {
+    const processPlan = async () => {
       const nextItem = queue.find(item => item.status === 'PENDING');
-      if (!nextItem) { setIsQueueRunning(false); return; }
+      if (!nextItem) { setIsProcessingPlan(false); return; }
       
       processingRef.current = true;
-      setIsQueueRunning(true);
-      updateItemStatus(nextItem.id, 'INITIATING');
-      if (!selectedItemId) setSelectedItemId(nextItem.id);
+      setIsProcessingPlan(true);
+      handleUpdateItem(nextItem.id, { status: 'INITIATING' });
 
       try {
-        // PHASE 1: STRATEGY GENERATION (FAST)
         const plan = await generateAdPlan(
           nextItem.data.name, nextItem.data.websiteUrl, nextItem.data.description,
           nextItem.data.targetAudience, nextItem.data.slogan,
@@ -68,104 +67,58 @@ const App: React.FC = () => {
           nextItem.data.images
         );
 
-        // Update UI immediately with the Plan
-        setQueue(prev => prev.map(i => i.id === nextItem.id ? { 
-          ...i, 
+        handleUpdateItem(nextItem.id, { 
           plan, 
-          status: 'POLLING', // Moving to polling immediately for the render phase
-          result: { videoUrl: '', audioUrl: null, plan } 
-        } : i));
+          status: 'COMPLETED' 
+        });
 
-        // PHASE 2: PARALLEL RENDERING (SLOW)
-        const hookScene = plan.scene_map.find(s => s.scene_goal === 'hook') || plan.scene_map[0];
-        
-        // Start Render and TTS in parallel
-        const [videoOpName] = await Promise.all([
-          initiateVideoRender(hookScene.visual_instruction, nextItem.data.images, nextItem.data.aspectRatio),
-          generateVoiceover(hookScene.voiceover_text, nextItem.data.voice).then(audioUrl => {
-            setQueue(prev => prev.map(i => i.id === nextItem.id ? { 
-              ...i, 
-              result: { ...(i.result || { videoUrl: '', audioUrl: null }), audioUrl } 
-            } : i));
-          })
-        ]);
-
-        // Update the item with the operation name so polling starts
-        setQueue(prev => prev.map(i => i.id === nextItem.id ? { 
-          ...i, 
-          operationName: videoOpName 
-        } : i));
+        // Generate high-quality thumbnails for the storyboard in background
+        generateSceneThumbnails(plan.scene_map, nextItem.data.aspectRatio).then(thumbnails => {
+           handleUpdateItem(nextItem.id, { thumbnails });
+        });
 
       } catch (error: any) {
-        updateItemStatus(nextItem.id, 'FAILED', error.message || "Engine failure");
+        handleUpdateItem(nextItem.id, { status: 'FAILED', error: error.message || "Synthesis Engine Failure" });
       } finally { 
         processingRef.current = false; 
       }
     };
-    processQueue();
-  }, [queue, selectedItemId, updateItemStatus]);
-
-  // STABLE POLLING LOOP
-  useEffect(() => {
-    const active = queue.filter(item => item.status === 'POLLING' && item.operationName);
-    active.forEach(item => {
-      if (!pollingIntervals.current[item.id]) {
-        const run = async () => {
-          const status = await pollVideoAdStatus(item.operationName!);
-          if (status.done) {
-            window.clearInterval(pollingIntervals.current[item.id]);
-            delete pollingIntervals.current[item.id];
-            if (status.result) {
-              setQueue(prev => prev.map(i => i.id === item.id ? { 
-                ...i, 
-                status: 'COMPLETED', 
-                result: { ...status.result!, audioUrl: i.result?.audioUrl || null, plan: i.plan } 
-              } : i));
-            } else {
-              updateItemStatus(item.id, 'FAILED', status.error);
-            }
-          }
-        };
-        // Shorter poll interval (8s) for faster feeling transition
-        pollingIntervals.current[item.id] = window.setInterval(run, 8000);
-        run();
-      }
-    });
-  }, [queue, updateItemStatus]);
+    processPlan();
+  }, [queue, handleUpdateItem]);
 
   const selectedItem = queue.find(i => i.id === selectedItemId);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500/30 overflow-x-hidden">
       <Header onSelectKey={handleSelectKey} apiKeyReady={apiKeyReady} />
       
       {!apiKeyReady && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-md">
-          <div className="w-full max-md:max-w-md bg-slate-900 border border-slate-800 rounded-[40px] p-8 md:p-12 shadow-3xl animate-in fade-in zoom-in duration-300">
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-xl">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-[48px] p-10 md:p-14 shadow-3xl animate-in fade-in zoom-in duration-500">
             <div className="flex flex-col items-center text-center">
-              <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center text-indigo-400 mb-8 border border-indigo-500/20">
-                <Key size={40} />
+              <div className="w-24 h-24 bg-gradient-to-br from-indigo-500/20 to-purple-600/20 rounded-[32px] flex items-center justify-center text-indigo-400 mb-8 border border-indigo-500/20 shadow-2xl">
+                <Key size={48} className="animate-pulse" />
               </div>
-              <h2 className="text-3xl font-black tracking-tighter text-white mb-4">Configuration Required</h2>
-              <p className="text-slate-400 text-sm leading-relaxed mb-8">
-                To power AdGenius and the Veo 3.1 video engine, you must connect a paid Google Gemini API key.
+              <h2 className="text-3xl font-black tracking-tighter text-white mb-4">Autonomous Access Required</h2>
+              <p className="text-slate-500 text-sm leading-relaxed mb-10">
+                To activate the Veo 3.1 cinematic engine and Gemini multimodal reasoning, please connect your production API key.
               </p>
               
-              <div className="w-full space-y-4">
+              <div className="w-full space-y-5">
                 <button 
                   onClick={handleSelectKey}
-                  className="w-full py-5 bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black rounded-2xl shadow-2xl active:scale-95 transition-all uppercase tracking-widest text-xs"
+                  className="w-full py-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black rounded-2xl shadow-2xl active:scale-95 transition-all uppercase tracking-widest text-xs border border-indigo-400/20"
                 >
-                  Configure API Key
+                  Configure Production Key
                 </button>
-                <div className="pt-2">
+                <div>
                   <a 
                     href="https://ai.google.dev/gemini-api/docs/billing" 
                     target="_blank" 
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 text-slate-500 hover:text-indigo-400 text-[10px] font-black uppercase tracking-widest transition-colors"
+                    className="inline-flex items-center gap-2 text-slate-600 hover:text-indigo-400 text-[10px] font-black uppercase tracking-widest transition-colors"
                   >
-                    Billing Documentation <ExternalLink size={12} />
+                    Billing & Quota Docs <ExternalLink size={12} />
                   </a>
                 </div>
               </div>
@@ -174,36 +127,79 @@ const App: React.FC = () => {
         </div>
       )}
 
-      <main className="flex-grow container mx-auto px-6 py-12 max-w-7xl">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-          <InputForm onSubmit={handleAddToQueue} isProcessing={isQueueRunning} />
-          <div className="bg-slate-900/40 p-8 rounded-[48px] border border-slate-800/60 shadow-inner flex flex-col min-h-[500px]">
-             <h2 className="text-xl font-black mb-8 flex items-center gap-3"><Cpu size={18} className="text-indigo-400"/> Production Pipeline</h2>
+      <main className="flex-grow container mx-auto px-6 py-12 md:py-20 max-w-7xl">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
+          <InputForm onSubmit={handleAddToQueue} isProcessing={isProcessingPlan} />
+          
+          <div className="bg-slate-900/40 p-10 rounded-[56px] border border-slate-800/60 shadow-2xl flex flex-col min-h-[500px] backdrop-blur-sm">
+             <div className="flex items-center justify-between mb-10">
+               <h2 className="text-2xl font-black flex items-center gap-4 text-white">
+                 <Cpu size={22} className="text-indigo-400"/> Production Pipeline
+               </h2>
+               {queue.some(i => i.status === 'INITIATING') && (
+                 <div className="flex items-center gap-2 px-3 py-1 bg-indigo-500/10 rounded-lg border border-indigo-500/20 animate-pulse">
+                   <Sparkles size={12} className="text-indigo-400" />
+                   <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Logic Stream Active</span>
+                 </div>
+               )}
+             </div>
+
              {queue.length === 0 ? (
-               <div className="flex-grow flex flex-col items-center justify-center text-slate-800 opacity-20">
-                 <Video size={64} className="mb-4"/>
-                 <p className="text-xs font-black uppercase tracking-[0.4em]">Engine Standby</p>
+               <div className="flex-grow flex flex-col items-center justify-center text-slate-800 opacity-20 py-20">
+                 <Video size={80} className="mb-6 stroke-[1.5px]"/>
+                 <p className="text-[10px] font-black uppercase tracking-[0.5em] text-center">Engine Standby • Waiting for Brand Data</p>
                </div>
              ) : (
-               <BatchQueue items={queue} onRemove={(id) => setQueue(q => q.filter(i => i.id !== id))} onSelect={(item) => setSelectedItemId(item.id)} processingId={null} />
+               <BatchQueue 
+                items={queue} 
+                onRemove={(id) => setQueue(q => q.filter(i => i.id !== id))} 
+                onSelect={(item) => setSelectedItemId(item.id)} 
+                processingId={null} 
+              />
              )}
           </div>
         </div>
 
         {selectedItem && (
-          <div className="mt-16 animate-fadeIn">
+          <div className="mt-24">
             {selectedItem.plan ? (
-              <AdPlanDisplay item={selectedItem} />
+              <AdPlanDisplay 
+                item={selectedItem} 
+                onUpdateItem={(updates) => handleUpdateItem(selectedItem.id, updates)} 
+              />
+            ) : selectedItem.status === 'FAILED' ? (
+              <div className="flex flex-col items-center py-24 bg-red-950/10 rounded-[56px] border border-red-500/20">
+                 <Key className="w-16 h-16 text-red-500/40 mb-6" />
+                 <h3 className="text-xl font-black text-red-400 uppercase tracking-widest">Synthesis Interrupted</h3>
+                 <p className="text-sm text-slate-600 mt-2">{selectedItem.error}</p>
+                 <button onPointerDown={() => handleUpdateItem(selectedItem.id, { status: 'PENDING' })} className="mt-8 px-8 py-3 bg-red-500/10 text-red-400 rounded-xl font-black text-xs uppercase border border-red-500/20">Retry Production</button>
+              </div>
             ) : (
-              <div className="flex flex-col items-center py-20 bg-slate-900/40 rounded-[48px] border border-slate-800/60">
-                 <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
-                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Synthesizing Creative Logic...</p>
-                 <span className="text-[8px] text-slate-700 mt-2">Gemini 3 Flash is performing brand analysis</span>
+              <div className="flex flex-col items-center py-32 bg-slate-900/40 rounded-[56px] border border-slate-800/60 backdrop-blur-3xl">
+                 <div className="relative mb-10">
+                   <Loader2 className="w-16 h-16 text-indigo-500 animate-spin" />
+                   <div className="absolute inset-0 m-auto w-6 h-6 bg-indigo-400 rounded-full animate-ping opacity-20" />
+                 </div>
+                 <h3 className="text-xl font-black uppercase tracking-[0.3em] text-white">Synthesizing Creative Strategy</h3>
+                 <p className="text-[10px] text-slate-500 mt-4 max-w-sm text-center leading-relaxed font-medium">
+                   Gemini is analyzing your product, market position, and imagery to construct an 8-scene high-conversion narrative.
+                 </p>
               </div>
             )}
           </div>
         )}
       </main>
+      
+      <footer className="py-12 px-6 border-t border-slate-900/50 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-3">
+           <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-black text-xs">AG</div>
+           <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">© 2025 AdGenius Autonomous Production</span>
+        </div>
+        <div className="flex items-center gap-8">
+          <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Veo 3.1 Preview</span>
+          <span className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Gemini 3 Pro</span>
+        </div>
+      </footer>
     </div>
   );
 };

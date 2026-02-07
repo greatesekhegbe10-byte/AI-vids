@@ -9,6 +9,12 @@ export interface AdScene {
   voiceover_text: string;
   on_screen_text: string;
   visual_instruction: string;
+  // Tracking per-scene rendering
+  renderStatus?: 'IDLE' | 'RENDERING' | 'POLLING' | 'COMPLETED' | 'FAILED';
+  videoUrl?: string;
+  audioUrl?: string;
+  operationName?: string;
+  videoOperation?: any; // To store the full operation object for extensions
 }
 
 export interface AdPlan {
@@ -50,6 +56,7 @@ export interface GeneratedResult {
   audioUrl: string | null;
   videoOperation?: any; 
   plan?: AdPlan;
+  concept?: { slogan?: string }; // Added to support requirements in VideoEditor
 }
 
 export interface BatchItem {
@@ -58,6 +65,8 @@ export interface BatchItem {
   status: 'PENDING' | 'INITIATING' | 'QUOTA_WAIT' | 'POLLING' | 'COMPLETED' | 'FAILED';
   result?: GeneratedResult;
   plan?: AdPlan;
+  thumbnails?: Record<string, string>;
   error?: string;
   operationName?: string;
+  videoOperation?: any;
 }

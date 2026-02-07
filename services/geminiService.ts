@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Modality, GenerateContentResponse } from "@google/genai";
-import { AdPlan, VoiceName, GeneratedResult } from "../types";
+import { AdPlan, VoiceName, GeneratedResult, AdScene } from "../types";
 
 const API_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -31,6 +31,7 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2, currentDelay = 50
   }
 }
 
+// Generate Ad Plan strategy using Gemini 3 Flash
 export const generateAdPlan = async (
   name: string, 
   url: string, 
@@ -44,13 +45,12 @@ export const generateAdPlan = async (
   images: File[]
 ): Promise<AdPlan> => {
   const promptText = `AI VIDEO AD ENGINE: Generate a high-converting, modular ad plan based on the product description and attached images.
-    Product: "${name}". Slogan: "${slogan}". Goal: ${goal}. Tone: ${tone}. Platform: ${platform}. Duration: ${maxDuration}min.
+    Product: "${name}". Slogan: "${slogan}". Goal: ${goal}. Tone: ${tone}. Platform: ${platform}. Max Duration: ${maxDuration}s.
     Details: ${description}. Website: ${url}. Audience: ${targetAudience}.
 
     STRUCTURE RULES:
-    - 10-15 independent scenes (30-60s each).
-    - Modular rendering.
-    - Scenes: Hook, Problem, Product Intro, Features, Social Proof, CTA.
+    - 5-8 independent scenes (3-10s each).
+    - Scenes: Hook, Problem, Product Intro, Feature Highlight, Social Proof, CTA.
     
     Return VALID JSON ONLY:
     {
@@ -61,8 +61,8 @@ export const generateAdPlan = async (
           "duration_seconds": number,
           "scene_title": "string",
           "voiceover_text": "string (natural, persuasive)",
-          "on_screen_text": "string (bold, mobile-readable)",
-          "visual_instruction": "string (HIGH-LEVEL ONLY: e.g., 'Product close-up + floating icons')"
+          "on_screen_text": "string (bold, high impact)",
+          "visual_instruction": "string (Detailed visual prompt for video generation)"
         }
       ],
       "audio_strategy": {
@@ -110,63 +110,121 @@ export const generateAdPlan = async (
   return JSON.parse(text.replace(/```json/g, '').replace(/```/g, '').trim());
 };
 
+// Generate high quality thumbnails using Gemini 2.5 Flash Image
+export const generateSceneThumbnails = async (scenes: AdScene[], aspectRatio: '16:9' | '9:16'): Promise<Record<string, string>> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
+  const thumbnails: Record<string, string> = {};
+
+  const batchSize = 3;
+  for (let i = 0; i < scenes.length; i += batchSize) {
+    const batch = scenes.slice(i, i + batchSize);
+    await Promise.all(batch.map(async (scene) => {
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: [{ parts: [{ text: `Professional commercial ad shot, ultra-HD: ${scene.visual_instruction}. Cinematic lighting.` }] }],
+          config: { imageConfig: { aspectRatio } },
+        });
+        const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
+        if (part?.inlineData) {
+          thumbnails[scene.scene_id] = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        }
+      } catch (e) {
+        console.warn(`Thumbnail failed for ${scene.scene_id}`);
+      }
+    }));
+  }
+  return thumbnails;
+};
+
+// Initiate video generation using the Google GenAI SDK
 export const initiateVideoRender = async (
   prompt: string,
   images: File[],
   aspectRatio: '16:9' | '9:16'
-): Promise<string> => {
+): Promise<any> => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) throw new Error("Missing API Key");
 
-  // Veo 3.1 Fast usually takes one primary reference image
+  const ai = new GoogleGenAI({ apiKey });
   let imagePart = undefined;
   if (images.length > 0) {
     const base64 = await fileToBase64(images[0]);
     imagePart = { imageBytes: base64, mimeType: images[0].type };
   }
 
-  const model = 'veo-3.1-fast-generate-preview';
-  const url = `${API_BASE_URL}/models/${model}:generateVideos?key=${apiKey}`;
-
-  const payload = {
-    prompt: `${prompt}, high-quality advertising style.`,
+  // Use the SDK for video generation as recommended
+  const operation = await ai.models.generateVideos({
+    model: 'veo-3.1-fast-generate-preview',
+    prompt: `A high-end professional commercial video: ${prompt}. Cinematic lighting, 8k resolution, smooth motion.`,
     image: imagePart,
-    config: { numberOfVideos: 1, resolution: '720p', aspectRatio }
-  };
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    config: { 
+      numberOfVideos: 1, 
+      resolution: '720p', 
+      aspectRatio 
+    }
   });
 
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error?.message || "Render failed to start");
-  return data.name;
+  return operation;
 };
 
-export const pollVideoAdStatus = async (operationName: string): Promise<{ done: boolean, result?: GeneratedResult, error?: string }> => {
+// Poll for video generation progress using the Google GenAI SDK
+export const pollVideoAdStatus = async (operation: any): Promise<{ done: boolean, videoUrl?: string, error?: string, operation?: any }> => {
   const apiKey = process.env.API_KEY;
   if (!apiKey) return { done: true, error: "API Key missing" };
 
-  const url = `${API_BASE_URL}/${operationName}?key=${apiKey}`;
-  const response = await fetch(url);
-  const data = await response.json();
+  const ai = new GoogleGenAI({ apiKey });
+  const updatedOperation = await ai.operations.getVideosOperation({ operation });
 
-  if (!response.ok) throw new Error(data.error?.message || "Polling error");
-
-  if (data.done) {
-    if (data.error) return { done: true, error: data.error.message };
-    const video = data.response?.generatedVideos?.[0]?.video;
+  if (updatedOperation.done) {
+    if (updatedOperation.error) return { done: true, error: updatedOperation.error.message };
+    const video = updatedOperation.response?.generatedVideos?.[0]?.video;
     if (!video?.uri) return { done: true, error: "Video URI missing" };
+    // Append the API key to the URI to fetch the MP4 bytes
     return {
       done: true,
-      result: { videoUrl: `${video.uri}${video.uri.includes('?') ? '&' : '?'}key=${apiKey}`, audioUrl: null, videoOperation: video }
+      videoUrl: `${video.uri}${video.uri.includes('?') ? '&' : '?'}key=${apiKey}`,
+      operation: updatedOperation
     };
   }
-  return { done: false };
+  return { done: false, operation: updatedOperation };
 };
 
+// Extend an existing video by adding 5 seconds of footage
+export const extendVideo = async (previousOperation: any, prompt: string, aspectRatio: '16:9' | '9:16'): Promise<GeneratedResult> => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) throw new Error("Missing API Key");
+
+  const ai = new GoogleGenAI({ apiKey });
+  
+  // Extensions require the veo-3.1-generate-preview model and use the previous video object
+  let operation = await ai.models.generateVideos({
+    model: 'veo-3.1-generate-preview',
+    prompt: prompt || 'Continue the video naturally',
+    video: previousOperation.response?.generatedVideos?.[0]?.video,
+    config: {
+      numberOfVideos: 1,
+      resolution: '720p',
+      aspectRatio: aspectRatio,
+    }
+  });
+
+  while (!operation.done) {
+    await new Promise(resolve => setTimeout(resolve, 8000));
+    operation = await ai.operations.getVideosOperation({ operation: operation });
+  }
+
+  const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+  const videoUrl = `${downloadLink}&key=${apiKey}`;
+
+  return {
+    videoUrl,
+    audioUrl: null,
+    videoOperation: operation
+  };
+};
+
+// Generate high fidelity voiceover using Gemini 2.5 Flash TTS
 export const generateVoiceover = async (script: string, voiceName: VoiceName): Promise<string | null> => {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
@@ -184,6 +242,7 @@ export const generateVoiceover = async (script: string, voiceName: VoiceName): P
   } catch (e) { return null; }
 };
 
+// Implementation of raw PCM to WAV conversion for browser playback
 const createWavUrl = (base64PCM: string): string => {
   const binaryString = atob(base64PCM);
   const bytes = new Uint8Array(binaryString.length);
@@ -203,48 +262,15 @@ const createWavUrl = (base64PCM: string): string => {
   return URL.createObjectURL(new Blob([buffer], { type: 'audio/wav' }));
 };
 
+// Generate AI product visuals using Gemini 2.5 Flash Image
 export const generatePlaceholderImage = async (name: string, description: string, aspectRatio: '16:9' | '9:16'): Promise<{ imageBytes: string; mimeType: string }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
-    contents: [{ parts: [{ text: `Professional commercial photography for ${name}. ${description}. Studio lighting.` }] }],
+    contents: [{ parts: [{ text: `Professional commercial photography for ${name}. ${description}. Studio lighting, luxury aesthetic.` }] }],
     config: { imageConfig: { aspectRatio } },
   });
   const part = response.candidates?.[0]?.content?.parts?.find(p => p.inlineData);
   if (part?.inlineData) return { imageBytes: part.inlineData.data, mimeType: part.inlineData.mimeType };
   throw new Error("Image generation failed");
-};
-
-export const extendVideo = async (
-  previousVideo: any,
-  prompt: string,
-  aspectRatio: '16:9' | '9:16'
-): Promise<GeneratedResult> => {
-  return await withRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-    let operation = await ai.models.generateVideos({
-      model: 'veo-3.1-generate-preview',
-      prompt: prompt,
-      video: previousVideo,
-      config: {
-        numberOfVideos: 1,
-        resolution: '720p',
-        aspectRatio: aspectRatio,
-      }
-    });
-
-    while (!operation.done) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      operation = await ai.operations.getVideosOperation({ operation: operation });
-    }
-
-    const video = operation.response?.generatedVideos?.[0]?.video;
-    if (!video?.uri) throw new Error("Video extension failed");
-
-    return {
-      videoUrl: `${video.uri}&key=${process.env.API_KEY}`,
-      audioUrl: null,
-      videoOperation: video
-    };
-  });
 };

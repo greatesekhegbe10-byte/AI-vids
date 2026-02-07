@@ -1,3 +1,4 @@
+
 import React, { ComponentProps } from 'react';
 import { 
   Wand2, 
@@ -24,7 +25,11 @@ import {
   Target,
   Zap,
   Layout,
-  Clock
+  Clock,
+  FileAudio,
+  FileVideo,
+  Sparkles,
+  Activity
 } from 'lucide-react';
 
 export { 
@@ -52,5 +57,9 @@ export {
   Target,
   Zap,
   Layout,
-  Clock
+  Clock,
+  FileAudio,
+  FileVideo,
+  Sparkles,
+  Activity
 };
