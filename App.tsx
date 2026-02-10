@@ -4,15 +4,17 @@ import { InputForm } from './components/InputForm';
 import { BatchQueue } from './components/BatchQueue';
 import { AdPlanDisplay } from './components/AdPlanDisplay';
 import { LoadingScreen } from './components/LoadingScreen';
+import { SettingsView } from './components/SettingsView';
 import { generateAdPlan, generateSceneThumbnails, generatePlaceholderImage, base64ToFile } from './services/geminiService';
 import { ProductData, BatchItem } from './types';
-import { Cpu, Video, Loader2, Key, ExternalLink, Sparkles, Plus, AlertCircle } from 'lucide-react';
+import { Key, Plus, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [queue, setQueue] = useState<BatchItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [apiKeyReady, setApiKeyReady] = useState<boolean>(true);
   const [isProcessingPlan, setIsProcessingPlan] = useState(false);
+  const [currentView, setCurrentView] = useState<'dashboard' | 'settings'>('dashboard');
   
   const processingRef = useRef<boolean>(false);
 
@@ -129,20 +131,25 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30">
-      <Header onSelectKey={handleSelectKey} apiKeyReady={apiKeyReady} />
+      <Header currentView={currentView} onViewChange={setCurrentView} apiKeyReady={apiKeyReady} />
       
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-8">
-        {!apiKeyReady ? (
-           <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6">
-             <div className="p-6 bg-indigo-500/10 rounded-full animate-pulse">
+        {currentView === 'settings' ? (
+          <SettingsView apiKeyReady={apiKeyReady} onSelectKey={handleSelectKey} />
+        ) : !apiKeyReady ? (
+           <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+             <div className="p-6 bg-indigo-500/10 rounded-full animate-pulse border border-indigo-500/20">
                <Key size={48} className="text-indigo-500" />
              </div>
              <h2 className="text-2xl font-bold text-white">API Key Required</h2>
              <p className="text-slate-400 max-w-md">
                To use Veo 3.1 and Gemini models, you must select a valid API key from a paid Google Cloud Project.
              </p>
-             <button onClick={handleSelectKey} className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold transition-all">
-               Select API Key
+             <button 
+               onClick={() => setCurrentView('settings')} 
+               className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/25"
+             >
+               Configure API Key
              </button>
            </div>
         ) : (

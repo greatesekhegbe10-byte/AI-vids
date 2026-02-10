@@ -29,7 +29,8 @@ import {
   FileAudio,
   FileVideo,
   Sparkles,
-  Activity
+  Activity,
+  Settings
 } from 'lucide-react';
 
 export { 
@@ -61,5 +62,6 @@ export {
   FileAudio,
   FileVideo,
   Sparkles,
-  Activity
+  Activity,
+  Settings
 };
