@@ -28,18 +28,14 @@ export const base64ToFile = (base64Data: string, mimeType: string, filename: str
   return new File([blob], filename, { type: mimeType });
 };
 
-// Helper to strictly get the key or throw, ensuring we don't pass undefined to SDK
+// Strictly get the key from the environment
 const getApiKey = (): string => {
   const key = process.env.API_KEY;
-  if (!key) throw new Error("API Key not found in environment.");
-  return key;
-};
-
-// Trigger the AI Studio key selection dialog if available
-const triggerKeySelection = () => {
-  if ((window as any).aistudio?.openSelectKey) {
-    (window as any).aistudio.openSelectKey();
+  if (!key) {
+    console.error("API Key is missing from environment variables.");
+    throw new Error("Service configuration error: API Key not found.");
   }
+  return key;
 };
 
 async function withRetry<T>(fn: () => Promise<T>, retries = 2, currentDelay = 5000): Promise<T> {
@@ -47,16 +43,8 @@ async function withRetry<T>(fn: () => Promise<T>, retries = 2, currentDelay = 50
     return await fn();
   } catch (error: any) {
     const errorStr = JSON.stringify(error).toLowerCase();
-    
-    // CRITICAL: Handle "Requested entity was not found" which usually means the project/key 
-    // is not valid for Veo or the user hasn't selected a paid project key yet.
-    if (errorStr.includes('requested entity was not found') || errorStr.includes('404')) {
-      triggerKeySelection();
-      // We throw here to stop the current execution. The user must select a key and retry.
-      throw new Error("Project or API Key not found. Please select a valid key from a paid GCP project.");
-    }
-
     const isQuotaError = errorStr.includes('429') || errorStr.includes('resource_exhausted');
+    
     if (retries > 0 && isQuotaError) {
       await new Promise(resolve => setTimeout(resolve, currentDelay));
       return withRetry(fn, retries - 1, currentDelay * 2);
@@ -267,19 +255,11 @@ export const fetchVideoBlob = async (videoUrl: string): Promise<string> => {
     const response = await fetch(videoUrl);
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      // Check for 404 or specific error messages to trigger key selection
-      if (response.status === 404 || (errorData.error?.message || '').toLowerCase().includes('requested entity was not found')) {
-         triggerKeySelection();
-         throw new Error("Project or API Key invalid. Please re-select key.");
-      }
       throw new Error(errorData.error?.message || `Download failed with status ${response.status}`);
     }
     const blob = await response.blob();
     return URL.createObjectURL(blob);
   } catch (error: any) {
-    if (error.message.includes('Requested entity was not found')) {
-       triggerKeySelection();
-    }
     throw error;
   }
 };

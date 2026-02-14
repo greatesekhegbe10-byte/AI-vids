@@ -4,43 +4,16 @@ import { InputForm } from './components/InputForm';
 import { BatchQueue } from './components/BatchQueue';
 import { AdPlanDisplay } from './components/AdPlanDisplay';
 import { LoadingScreen } from './components/LoadingScreen';
-import { SettingsView } from './components/SettingsView';
 import { generateAdPlan, generateSceneThumbnails, generatePlaceholderImage, base64ToFile } from './services/geminiService';
 import { ProductData, BatchItem } from './types';
-import { Key, Plus, AlertCircle } from 'lucide-react';
+import { Plus, AlertCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   const [queue, setQueue] = useState<BatchItem[]>([]);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [apiKeyReady, setApiKeyReady] = useState<boolean>(true);
   const [isProcessingPlan, setIsProcessingPlan] = useState(false);
-  const [currentView, setCurrentView] = useState<'dashboard' | 'settings'>('dashboard');
   
   const processingRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    const checkKey = async () => {
-      const aistudio = (window as any).aistudio;
-      const hasEnvKey = !!process.env.API_KEY;
-      if (aistudio?.hasSelectedApiKey) {
-        const selected = await aistudio.hasSelectedApiKey();
-        setApiKeyReady(selected || hasEnvKey);
-      } else {
-        setApiKeyReady(hasEnvKey);
-      }
-    };
-    checkKey();
-    const interval = setInterval(checkKey, 2000); 
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleSelectKey = async () => {
-    const aistudio = (window as any).aistudio;
-    if (aistudio?.openSelectKey) {
-      await aistudio.openSelectKey();
-      setApiKeyReady(true);
-    }
-  };
 
   const handleAddToQueue = (data: ProductData) => {
     const newItem: BatchItem = { id: data.id, data, status: 'PENDING' };
@@ -131,85 +104,65 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200 font-sans selection:bg-indigo-500/30">
-      <Header currentView={currentView} onViewChange={setCurrentView} apiKeyReady={apiKeyReady} />
+      <Header />
       
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-8">
-        {currentView === 'settings' ? (
-          <SettingsView apiKeyReady={apiKeyReady} onSelectKey={handleSelectKey} />
-        ) : !apiKeyReady ? (
-           <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
-             <div className="p-6 bg-indigo-500/10 rounded-full animate-pulse border border-indigo-500/20">
-               <Key size={48} className="text-indigo-500" />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Sidebar / Queue */}
+          <div className="lg:col-span-3 space-y-6">
+             <div className="flex items-center justify-between">
+               <h3 className="font-black text-slate-500 uppercase tracking-widest text-xs">Campaign Queue</h3>
+               <span className="bg-slate-900 text-slate-400 text-[10px] font-bold px-2 py-1 rounded-lg">{queue.length}</span>
              </div>
-             <h2 className="text-2xl font-bold text-white">API Key Required</h2>
-             <p className="text-slate-400 max-w-md">
-               To use Veo 3.1 and Gemini models, you must select a valid API key from a paid Google Cloud Project.
-             </p>
+             <BatchQueue 
+               items={queue} 
+               onRemove={(id) => {
+                  setQueue(prev => prev.filter(i => i.id !== id));
+                  if (selectedItemId === id) setSelectedItemId(null);
+               }}
+               onSelect={(item) => setSelectedItemId(item.id)}
+               processingId={isProcessingPlan ? queue.find(i => i.status === 'INITIATING' || i.status === 'POLLING')?.id || null : null}
+             />
              <button 
-               onClick={() => setCurrentView('settings')} 
-               className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-bold transition-all shadow-lg shadow-indigo-500/25"
+               onClick={() => setSelectedItemId(null)}
+               className="w-full py-3 border border-dashed border-slate-700 text-slate-500 rounded-2xl text-xs font-bold hover:bg-slate-900 hover:text-slate-300 transition-all flex items-center justify-center gap-2"
              >
-               Configure API Key
+               <Plus size={14} /> New Campaign
              </button>
-           </div>
-        ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* Sidebar / Queue */}
-            <div className="lg:col-span-3 space-y-6">
-               <div className="flex items-center justify-between">
-                 <h3 className="font-black text-slate-500 uppercase tracking-widest text-xs">Campaign Queue</h3>
-                 <span className="bg-slate-900 text-slate-400 text-[10px] font-bold px-2 py-1 rounded-lg">{queue.length}</span>
-               </div>
-               <BatchQueue 
-                 items={queue} 
-                 onRemove={(id) => {
-                    setQueue(prev => prev.filter(i => i.id !== id));
-                    if (selectedItemId === id) setSelectedItemId(null);
-                 }}
-                 onSelect={(item) => setSelectedItemId(item.id)}
-                 processingId={isProcessingPlan ? queue.find(i => i.status === 'INITIATING' || i.status === 'POLLING')?.id || null : null}
-               />
-               <button 
-                 onClick={() => setSelectedItemId(null)}
-                 className="w-full py-3 border border-dashed border-slate-700 text-slate-500 rounded-2xl text-xs font-bold hover:bg-slate-900 hover:text-slate-300 transition-all flex items-center justify-center gap-2"
-               >
-                 <Plus size={14} /> New Campaign
-               </button>
-            </div>
-
-            {/* Main Content */}
-            <div className="lg:col-span-9">
-               {selectedItemId ? (
-                 (() => {
-                   const item = queue.find(i => i.id === selectedItemId);
-                   if (!item) return null;
-
-                   if (item.status === 'COMPLETED' && item.plan) {
-                      return (
-                        <AdPlanDisplay 
-                          item={item} 
-                          onUpdateItem={(updates) => handleUpdateItem(item.id, updates)}
-                        />
-                      );
-                   }
-                   if (item.status === 'FAILED') {
-                      return (
-                        <div className="flex flex-col items-center justify-center h-[500px] bg-slate-900/50 rounded-[32px] border border-red-500/20">
-                          <AlertCircle size={48} className="text-red-500 mb-4" />
-                          <h3 className="text-xl font-bold text-white mb-2">Generation Failed</h3>
-                          <p className="text-slate-400 max-w-md text-center mb-6">{item.error || "Unknown error occurred"}</p>
-                          <button onClick={() => handleUpdateItem(item.id, { status: 'PENDING', error: undefined })} className="px-6 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700">Retry</button>
-                        </div>
-                      );
-                   }
-                   return <LoadingScreen progress={item.status === 'INITIATING' ? undefined : "Waiting in queue..."} />;
-                 })()
-               ) : (
-                 <InputForm onSubmit={handleAddToQueue} isProcessing={false} />
-               )}
-            </div>
           </div>
-        )}
+
+          {/* Main Content */}
+          <div className="lg:col-span-9">
+             {selectedItemId ? (
+               (() => {
+                 const item = queue.find(i => i.id === selectedItemId);
+                 if (!item) return null;
+
+                 if (item.status === 'COMPLETED' && item.plan) {
+                    return (
+                      <AdPlanDisplay 
+                        item={item} 
+                        onUpdateItem={(updates) => handleUpdateItem(item.id, updates)}
+                      />
+                    );
+                 }
+                 if (item.status === 'FAILED') {
+                    return (
+                      <div className="flex flex-col items-center justify-center h-[500px] bg-slate-900/50 rounded-[32px] border border-red-500/20">
+                        <AlertCircle size={48} className="text-red-500 mb-4" />
+                        <h3 className="text-xl font-bold text-white mb-2">Generation Failed</h3>
+                        <p className="text-slate-400 max-w-md text-center mb-6">{item.error || "Unknown error occurred"}</p>
+                        <button onClick={() => handleUpdateItem(item.id, { status: 'PENDING', error: undefined })} className="px-6 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700">Retry</button>
+                      </div>
+                    );
+                 }
+                 return <LoadingScreen progress={item.status === 'INITIATING' ? undefined : "Waiting in queue..."} />;
+               })()
+             ) : (
+               <InputForm onSubmit={handleAddToQueue} isProcessing={false} />
+             )}
+          </div>
+        </div>
       </main>
     </div>
   );

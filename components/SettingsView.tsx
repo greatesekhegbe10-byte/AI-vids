@@ -17,7 +17,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ apiKeyReady, onSelec
 
       <div className="space-y-6">
         {/* API Key Section */}
-        <div className="bg-slate-900/60 border border-slate-800 rounded-[32px] overflow-hidden backdrop-blur-md">
+        <div className="bg-slate-900/60 border border-slate-800 rounded-[32px] overflow-hidden backdrop-blur-md relative">
           <div className="p-8 border-b border-slate-800/50">
              <div className="flex items-center gap-4 mb-6">
                <div className={`p-4 rounded-2xl ${apiKeyReady ? 'bg-emerald-500/10 text-emerald-400' : 'bg-indigo-500/10 text-indigo-400'}`}>
@@ -33,9 +33,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ apiKeyReady, onSelec
                      <CheckCircle2 size={12} /> Active
                    </span>
                  ) : (
-                   <span className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/10 text-amber-400 rounded-full text-xs font-bold border border-amber-500/20">
+                   <button 
+                      onClick={onSelectKey}
+                      className="inline-flex items-center gap-2 px-3 py-1 bg-amber-500/10 text-amber-400 rounded-full text-xs font-bold border border-amber-500/20 cursor-pointer"
+                   >
                      <AlertCircle size={12} /> Action Required
-                   </span>
+                   </button>
                  )}
                </div>
              </div>
@@ -52,15 +55,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ apiKeyReady, onSelec
              </div>
 
              <button
+               type="button"
                onClick={onSelectKey}
-               className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20 active:scale-[0.98] flex items-center justify-center gap-2"
+               className="relative z-10 w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-indigo-500/20 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer touch-manipulation"
              >
                {apiKeyReady ? 'Change API Key' : 'Select Project & API Key'}
              </button>
           </div>
           
           <div className="p-4 bg-slate-950/30 flex items-center justify-center gap-2 text-xs font-medium text-slate-500 hover:text-indigo-400 transition-colors">
-            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="flex items-center gap-2">
+            <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="flex items-center gap-2 relative z-10 p-2">
               View Billing Documentation <ExternalLink size={12} />
             </a>
           </div>
